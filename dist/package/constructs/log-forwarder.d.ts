@@ -62,7 +62,10 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
     liftFieldDefaults?: boolean;
     /**
      * Release/version stamped on every shipped line (`version` field) so behavior changes can be attributed
-     * to a deploy. Pass a semver or git sha. Defaults to `FORWARDER_VERSION` at deploy time; omitted if unset.
+     * to a deploy. Resolved AUTOMATICALLY so neither the app nor CI has to maintain it (see
+     * {@link LogForwarderConstruct.resolveVersion}): explicit value / `FORWARDER_VERSION` → the CI commit
+     * (`GITHUB_SHA`, set automatically by GitHub Actions) → the app's `package.json` version → omitted.
+     * Only set this to force a specific value.
      */
     version?: string;
     /**
@@ -126,6 +129,12 @@ export declare class LogForwarderConstruct implements FW24Construct {
     constructor(config?: LogForwarderConstructConfig);
     private resolveNoiseEnv;
     /** App-declared fields to lift, merged with {@link DEFAULT_LIFT_FIELDS} unless liftFieldDefaults is false. */
+    /**
+     * Resolve the version stamp automatically — no app code or CI wiring to maintain:
+     *   explicit config / `FORWARDER_VERSION` → `GITHUB_SHA` (auto in GitHub Actions, first 12) →
+     *   the app's package.json version (auto-bumped by release CI, read at synth) → '' (omitted).
+     */
+    private resolveVersion;
     private resolveLiftFields;
     construct(): Promise<void>;
 }
