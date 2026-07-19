@@ -2220,7 +2220,7 @@ export type CustomPageOptions = ListPageConfig | FormPageConfig | DetailsPageCon
 export declare function makeCustomPageConfig(options: CustomPageOptions): {
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2232,7 +2232,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     listPageConfig: ListPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2247,7 +2247,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     formPageConfig: FormPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2259,7 +2259,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     detailsPageConfig: DetailsPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2279,7 +2279,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2305,7 +2305,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     }>;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2332,7 +2332,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     };
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2344,7 +2344,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     kanbanPageConfig: KanbanPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2356,7 +2356,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     treePageConfig: TreePageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2368,7 +2368,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     calendarPageConfig: CalendarPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;
@@ -2380,7 +2380,7 @@ export declare function makeCustomPageConfig(options: CustomPageOptions): {
     mapPageConfig: MapPageConfigStructure;
     pageName: string | undefined;
     pageTitle: ConditionalValue<string> | Template;
-    pageType: "map" | "list" | "dashboard" | "details" | "accordion" | "form" | "menu" | "kanban" | "tree" | "calendar";
+    pageType: "map" | "list" | "dashboard" | "form" | "details" | "accordion" | "menu" | "kanban" | "tree" | "calendar";
     routePattern: string | undefined;
     breadcrumbs: {
         label: string | Template;

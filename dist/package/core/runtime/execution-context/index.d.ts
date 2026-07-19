@@ -40,4 +40,4 @@ export { createExecutionContext, runWithExecutionContext, runWithExecutionContex
 export { getCapturedParentId, getCurrentParentObservabilityLogId, } from './storage';
 export { setActor, enrichActor, addTags, setAttribute, setAttributes, setSource, } from './storage';
 export { extractFromHeaders, extractFromSqs, extractFromSqsRecord, extractFromSns, extractFromEventBridge, extractFromStepFunctions, extractFromKinesis, } from './propagation';
-export { createHttpHeaders, createSqsAttributes, createSnsAttributes, createEventBridgeContext, createStepFunctionsContext, toW3CTraceId, toW3CParentId, } from './propagation';
+export { createHttpHeaders, createSqsAttributes, createSnsAttributes, createEventBridgeContext, createStepFunctionsContext, toW3CTraceId, toW3CParentId, sanitizeTraceId, } from './propagation';

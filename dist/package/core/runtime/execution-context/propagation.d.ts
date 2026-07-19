@@ -6,6 +6,13 @@
  */
 import { ExecutionContextData, ParsedTraceContext } from './types';
 /**
+ * Return `value` only if it is a safe trace/correlation id (see
+ * {@link SAFE_TRACE_ID_RE}); otherwise `undefined`. Trims first; treats blank as
+ * absent. Use at every UNTRUSTED extraction boundary so nothing charset-unsafe
+ * can reach outbound headers or logs.
+ */
+export declare function sanitizeTraceId(value: string | undefined | null): string | undefined;
+/**
  * Convert UUID/string to valid W3C trace-id (32 hex chars).
  */
 export declare function toW3CTraceId(id: string): string;
