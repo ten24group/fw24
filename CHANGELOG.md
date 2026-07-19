@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.47](https://github.com/ten24group/fw24/compare/v1.1.0-beta.46...v1.1.0-beta.47) (2026-07-19)
+
+
+### Features
+
+* **log-forwarder:** auto-derive version (GITHUB_SHA / package.json) — no app or CI wiring ([#305](https://github.com/ten24group/fw24/issues/305)) ([395d54c](https://github.com/ten24group/fw24/commit/395d54c85a89fe3b82061febd00fb7974b8a8e72))
+
 ## [1.1.0-beta.46](https://github.com/ten24group/fw24/compare/v1.1.0-beta.45...v1.1.0-beta.46) (2026-07-19)
 
 
