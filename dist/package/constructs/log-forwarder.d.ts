@@ -51,6 +51,21 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
     /** App-owned noise/severity rules applied inside the forwarder (layers 2–4). */
     noise?: LogForwarderNoiseRules;
     /**
+     * Structured fields to lift from tslog args into queryable top-level record fields, so Logtrail can
+     * follow one request across services or filter "all logs for order 991". Only fields the app actually
+     * logs as structured args (e.g. `logger.info('charge failed', { orderId, correlationId })`) are lifted
+     * — the forwarder never scrapes free text. {@link DEFAULT_LIFT_FIELDS} (correlationId) is merged in
+     * unless {@link liftFieldDefaults} is false.
+     */
+    liftFields?: string[];
+    /** Merge {@link DEFAULT_LIFT_FIELDS} with {@link liftFields}. Default true. Set false to lift ONLY your list. */
+    liftFieldDefaults?: boolean;
+    /**
+     * Release/version stamped on every shipped line (`version` field) so behavior changes can be attributed
+     * to a deploy. Pass a semver or git sha. Defaults to `FORWARDER_VERSION` at deploy time; omitted if unset.
+     */
+    version?: string;
+    /**
      * Which construct tree to subscribe.
      * - `'stack'` (default): the forwarder's stack and any nested stacks under it (covers the common
      *   satellite app, including per-controller nested stacks parented to the default stack).
@@ -79,6 +94,12 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
  */
 export declare const DEFAULT_LOG_NOISE_RULES: Required<Omit<LogForwarderNoiseRules, 'useDefaults'>>;
 /**
+ * Fields lifted from tslog args into queryable record fields by default. `correlationId` is fw24's
+ * cross-service trace id, so lifting it out of the box lets Logtrail follow a request across services
+ * the moment an app logs it. Apps add their own business ids (orderId, userId, …) via `liftFields`.
+ */
+export declare const DEFAULT_LIFT_FIELDS: string[];
+/**
  * Out-of-band log shipping for every Lambda in the app.
  *
  * Attaches a CloudWatch Logs subscription filter to each function's log group (via an Aspect), routing
@@ -104,5 +125,7 @@ export declare class LogForwarderConstruct implements FW24Construct {
     mainStack: Stack;
     constructor(config?: LogForwarderConstructConfig);
     private resolveNoiseEnv;
+    /** App-declared fields to lift, merged with {@link DEFAULT_LIFT_FIELDS} unless liftFieldDefaults is false. */
+    private resolveLiftFields;
     construct(): Promise<void>;
 }
