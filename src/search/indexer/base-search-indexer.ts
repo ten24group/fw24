@@ -106,12 +106,12 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
       groups.set(key, arr);
     }
 
-    this.logger.info('Records grouped for batch processing', {
+    // Hot path: only a cheap summary at debug. The old per-group `groupDetails` array was built on
+    // EVERY batch (arguments are evaluated before the log call, so even a suppressed debug paid for it)
+    // and added no value at the volume the stream/indexer runs at.
+    this.logger.debug('Records grouped for batch processing', {
       totalGroups: groups.size,
-      groupDetails: Array.from(groups.entries()).map(([ key, groupRecords ]) => ({
-        group: key,
-        recordCount: groupRecords.length
-      }))
+      totalRecords: records.length,
     });
 
     // Process each group using BatchProgress
@@ -351,13 +351,13 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
 
   protected getIndexName(entityName: string): string {
     const tableNameKey = resolveEnvValueFor({ key: SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY });
-    this.logger.info('tableNameKey', { tableNameKey });
+    this.logger.debug('tableNameKey', { tableNameKey });
     if (!tableNameKey) {
       throw new SearchValidationError(`${SEARCH_INDEXER_ENV_KEYS.TABLE_NAME_ENV_KEY} environment variable is required to calculate the appropriate index-name`);
     }
 
     const tableName = resolveEnvValueFor({ key: tableNameKey, suffix: 'table' });
-    this.logger.info('tableName', { tableName });
+    this.logger.debug('tableName', { tableName });
 
     if (!tableName) {
       throw new SearchValidationError(`${tableName} environment variable is required to calculate the appropriate index-name`);
