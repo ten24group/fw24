@@ -1,35 +1,32 @@
 # Cross-service trace propagation
 
-A single request-scoped **`traceId`** that flows through the async call stack,
-appears on every log line, and rides to downstream services over the
-**`x-trace-id`** HTTP header — so one identifier stitches a request together
-across service boundaries and log lines.
+fw24 stitches a request together across service boundaries and log lines using a
+**single** identifier: the observability **`correlationId`**. There is no second
+trace id. `correlationId` is established at every entry point, propagated to
+downstream services, and stamped onto every structured log line — so the Logtrail
+Correlation view can follow one request across services by a field present on all
+forwarded logs.
 
-It is **zero-config** and **backward-compatible**: when nothing establishes a
-trace context, everything degrades to a no-op (no `traceId` on logs, no header
-on outbound calls, no errors).
+It is **backward-compatible**: when no ExecutionContext is established, logs
+simply carry no `correlationId` (a no-op) and nothing breaks.
 
 ---
 
-## Why a dedicated trace id (vs. the existing `correlationId`)
+## Why `correlationId` (and not a parallel `x-trace-id`)
 
-fw24 already has a rich observability `ExecutionContext` built around
-`correlationId` + spans (`src/core/runtime/execution-context/`). That system is
-per-invocation, requires a non-empty correlation id, and clones its context when
-entering span scopes.
+fw24 already has a mature observability `ExecutionContext`
+(`src/core/runtime/execution-context/`) built around `correlationId` + spans. It:
 
-Trace propagation is a smaller, orthogonal concern: one cheap, stable string
-whose only job is **request correlation across hops and logs**. Keeping it in a
-tiny self-contained module (`src/core/runtime/trace-context.ts`, imports only
-Node builtins) means:
+- is established at **every** entry point (API, SQS, task, mail) via
+  `runWithExecutionContext`, so it is ambient throughout the async call stack;
+- is already **propagated on every hop** — over HTTP (`x-correlation-id` + W3C
+  `traceparent`) and over SQS / SNS / EventBridge / Step Functions (message
+  attributes / event detail).
 
-- **No risk** to the observability context semantics all backends depend on.
-- **No import cycles** — the logger (a leaf) can read the trace id safely.
-- A **truly no-op** fallback when unused.
-
-The two coexist: at an HTTP entry point both the trace context and the execution
-context are established, and `createHttpHeaders()` emits `x-trace-id` alongside
-the existing `x-correlation-id` / `traceparent`.
+So the id that ties a request together already exists and already flows
+everywhere. The only missing piece was putting it on **log lines**. A separate
+`x-trace-id` would have been a redundant second identifier that only covered the
+HTTP path. We fold onto `correlationId` instead.
 
 ---
 
@@ -37,110 +34,79 @@ the existing `x-correlation-id` / `traceparent`.
 
 ### 1. Ambient context (AsyncLocalStorage)
 
-`trace-context.ts` owns one `AsyncLocalStorage<{ traceId }>`. The id is set once
-at request entry and is then readable anywhere downstream — including in async
-callbacks and in loggers/clients created at module-load time — without threading
-it through function signatures.
+The ExecutionContext owns one `AsyncLocalStorage<ExecutionContextData>`
+(`execution-context/storage.ts`). `correlationId` is set once at entry and is
+readable anywhere downstream — including in async callbacks and in loggers
+created at module-load time — via `getCurrentExecutionContext()?.correlationId`,
+without threading it through function signatures.
 
-### 2. Request entry: reuse or generate
+### 2. Entry points establish `correlationId`
 
-At the HTTP entry point (`APIController.LambdaHandler`), before running the
-handler:
+| Entry point | correlationId source |
+| --- | --- |
+| API Gateway (`api-gateway-controller.ts`) | `request.requestId` (AWS request id); upstream `x-correlation-id` / `traceparent` becomes `causedBy` |
+| SQS / queue (`sqs-controller.ts`) | Lambda `awsRequestId` (per invocation); upstream SQS/SNS `correlationId` becomes `causedBy` |
+| Task / cron (`task-controller.ts`) | Lambda `awsRequestId` |
+| Mail processor (`mail-processor.ts`) | `record.messageId` (per record); upstream becomes `causedBy` |
 
-```ts
-const traceId = resolveIncomingTraceId(request.headers); // reuse x-trace-id, else new UUID
-return runWithTraceId(traceId, () =>
-  runWithExecutionContext(execCtx, async () => { /* handler */ })
-);
-```
+Each wraps its handler in `runWithExecutionContext(execCtx, …)`.
 
-- Incoming `x-trace-id` (case-insensitive, array-tolerant, trimmed) is **reused**
-  so a trace started upstream continues unbroken.
-- Otherwise a fresh **UUID v4** is generated.
-
-### 3. Logs carry `traceId`
+### 3. Logs carry `correlationId`
 
 `createLogger()` wraps tslog's `overwrite.addMeta` hook (read fresh on every
 `log()` call). It delegates to tslog's own default meta builder and then stamps
-the ambient `traceId` onto the produced `_meta`:
+the ambient `correlationId` onto the produced `_meta`:
 
 ```json
 { "0": "order created", "_meta": { "name": "OrderController", "logLevelName": "INFO",
-  "date": "…", "traceId": "3f2b…" } }
+  "date": "…", "correlationId": "3f2b…" } }
 ```
 
-The **log forwarder** (`log-forwarder-handler.ts`) already lifts fields out of
-tslog `_meta`; it now also lifts `traceId` into the shipped Vector record
-alongside the existing `requestId`. `requestId` (surfaced from the AWS Lambda log
-prefix) is untouched.
+The **log forwarder** (`log-forwarder-handler.ts`) lifts `correlationId` out of
+tslog `_meta` into the shipped Vector record alongside the existing `requestId`.
 
-> Note: `traceId` rides in tslog **`_meta`**, which is serialized on the JSON
-> output path the forwarder parses. In tslog's default *pretty* console mode the
-> field is present in `_meta` but not rendered in the pretty template. Services
-> whose logs are forwarded should emit JSON (`createLogger({ name, type: 'json' })`
-> or set it globally) for the field to appear in the shipped record.
+> Note: `correlationId` rides in tslog **`_meta`**, serialized on the JSON output
+> path the forwarder parses. In tslog's default *pretty* console mode the field
+> is present in `_meta` but not rendered in the pretty template. Forwarded
+> services should emit JSON (`createLogger({ name, type: 'json' })`).
 
 ### 4. Outbound propagation
 
-`createHttpHeaders(ctx)` — fw24's outbound HTTP header helper — now appends
-`x-trace-id` from the ambient context (no-op when none). Any caller already
-spreading these headers into a `fetch`/axios/SigV4-signed request propagates the
-trace automatically.
+Already handled by the existing ExecutionContext helpers, unchanged:
 
-For clients that build headers by hand, two small helpers are provided:
-
-```ts
-import { traceHeaders, injectTraceHeaders, getTraceId } from '@ten24group/fw24';
-
-// spread form
-await fetch(url, { headers: { 'content-type': 'application/json', ...traceHeaders() } });
-
-// non-destructive merge (never overwrites an explicit caller value)
-const headers = injectTraceHeaders(signedHeaders);
-
-// raw read
-const id = getTraceId(); // string | undefined
-```
+- `createHttpHeaders(ctx)` → `x-correlation-id`, `x-caused-by`, W3C `traceparent`.
+- `createSqsAttributes(ctx)` / `createSnsAttributes(ctx)` /
+  `createEventBridgeContext(ctx)` → `correlationId` + `causedBy` attributes.
 
 ---
 
-## Public API (`@ten24group/fw24`)
+## Security: inbound header sanitization (P0)
 
-| Export | Purpose |
-| --- | --- |
-| `TRACE_ID_HEADER` | The header name constant, `'x-trace-id'`. |
-| `getTraceId()` | Current request-scoped trace id, or `undefined`. |
-| `resolveIncomingTraceId(headers)` | Read `x-trace-id` from a header bag, else generate a UUID. |
-| `runWithTraceId(id, fn)` | Run `fn` within a trace scope (generates if `id` is blank). |
-| `runWithIncomingTraceContext(headers, fn)` | Resolve from headers + run, in one call. |
-| `traceHeaders()` | `{ 'x-trace-id': id }` when active, else `{}`. |
-| `injectTraceHeaders(headers?)` | Merge the trace id into a headers object (won't overwrite). |
-| `readTraceIdHeader(headers)` / `generateTraceIdValue()` | Lower-level building blocks. |
+An inbound `x-correlation-id` / `x-caused-by` (and the correlation id extracted
+from SQS/SNS attributes) is **untrusted** and can flow into outbound headers and
+structured logs. To prevent outbound-header injection (CR/LF → header
+splitting / an availability bug) and log injection/amplification, every
+untrusted extraction boundary runs the value through `sanitizeTraceId()`
+(`execution-context/propagation.ts`):
+
+- Accepts only `^[A-Za-z0-9._-]{1,128}$` — a superset of UUIDs, W3C hex
+  trace-ids, and AWS request ids, with **no** header/log-breaking characters.
+- On violation the value is **dropped**, so the entry point mints a fresh id
+  instead of propagating the poisoned one.
+
+The W3C `traceparent` and X-Ray paths were already constrained by strict hex
+regexes; the custom `x-correlation-id` path (previously only `.trim()`) is the
+one this closes.
 
 ---
 
-## Zero-config adoption
+## Backward compatibility
 
-- **HTTP controllers** — already wired. No change needed; logs and
-  `createHttpHeaders`-based outbound calls carry the trace automatically.
-- **Outbound HTTP you build by hand** — spread `...traceHeaders()` or wrap your
-  headers with `injectTraceHeaders(...)`.
-- **Non-HTTP entry points** (SQS / EventBridge / Step Functions / cron) — these
-  don't have an `x-trace-id` header. To extend a trace into them, resolve the id
-  from the message contract you control and wrap the handler body in
-  `runWithTraceId(id, fn)`. Until then they simply run without a trace id
-  (no-op), exactly as before.
-
-## Backward compatibility & risks
-
-- **No behavior change when unused.** No context ⇒ `getTraceId()` is `undefined`,
-  logs carry no `traceId`, outbound headers are unchanged.
+- **No behavior change when unused.** No ExecutionContext ⇒ logs carry no
+  `correlationId`; outbound propagation is unchanged.
 - **Logger hook.** The `addMeta` wrapper delegates to tslog's own meta builder
-  and is guarded: if tslog internals change (`_addMetaToLogObj` missing), it
-  silently skips enrichment rather than break logging. fw24 uses no sub-loggers,
-  so instance-bound delegation is safe.
-- **`x-trace-id` is a plain correlation id**, not a signed/authenticated value —
-  treat it as untrusted input (it is only used for correlation, never
-  authorization).
-- **Pretty vs. JSON logs.** The forwarder's `_meta` lift only sees `traceId` on
-  the JSON output path (see note above).
+  and is guarded: if tslog internals change (`_addMetaToLogObj` missing) it
+  silently skips enrichment rather than break logging.
+- **`correlationId` is a plain correlation id**, not an authenticated value —
+  treated as untrusted input (used only for correlation, never authorization),
+  and sanitized at every untrusted boundary.

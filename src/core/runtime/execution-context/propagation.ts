@@ -7,7 +7,6 @@
 
 import { ExecutionContextData, ParsedTraceContext } from './types';
 import { parseSnsSqsEnvelope } from '../sns-sqs-envelope';
-import { TRACE_ID_HEADER, getTraceId } from '../trace-context';
 
 // ============================================================================
 // Constants
@@ -18,6 +17,34 @@ const W3C_TRACE_ID_LENGTH = 32;
 
 /** W3C parent-id/span-id length (16 hex chars = 8 bytes) */
 const W3C_PARENT_ID_LENGTH = 16;
+
+/**
+ * Conservative charset+length for a correlation/caused-by id read from an
+ * UNTRUSTED source (inbound HTTP header, SQS/SNS attribute, event payload).
+ *
+ * SECURITY (P0): an inbound `x-correlation-id` / `x-caused-by` flows into the
+ * ExecutionContext and can be re-emitted verbatim on outbound headers
+ * (`createHttpHeaders`) and into structured logs. Without a charset guard a
+ * caller could inject CR/LF (outbound-header splitting / request smuggling —
+ * an availability bug) or newlines/control chars (log injection & amplification).
+ * We therefore accept only `[A-Za-z0-9._-]`, capped at 128 chars — a superset of
+ * UUIDs, W3C hex trace-ids, and AWS request ids, but with no header/log-breaking
+ * characters. On violation the value is dropped so the entry point mints a fresh
+ * id instead of propagating the poisoned one.
+ */
+const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
+
+/**
+ * Return `value` only if it is a safe trace/correlation id (see
+ * {@link SAFE_TRACE_ID_RE}); otherwise `undefined`. Trims first; treats blank as
+ * absent. Use at every UNTRUSTED extraction boundary so nothing charset-unsafe
+ * can reach outbound headers or logs.
+ */
+export function sanitizeTraceId(value: string | undefined | null): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return SAFE_TRACE_ID_RE.test(trimmed) ? trimmed : undefined;
+}
 
 // ============================================================================
 // W3C Utilities
@@ -62,16 +89,19 @@ export function extractFromHeaders(
     normalized[ key.toLowerCase() ] = value;
   }
 
-  // 1. Custom correlation ID
-  const customId = normalized[ 'x-correlation-id' ]?.trim();
+  // 1. Custom correlation ID (UNTRUSTED — sanitize charset+length before use).
+  // A poisoned value is dropped so the caller mints a fresh id rather than
+  // propagating CR/LF or control chars to outbound headers / logs.
+  const customId = sanitizeTraceId(normalized[ 'x-correlation-id' ]);
   if (customId) {
     return {
       correlationId: customId,
-      causedBy: normalized[ 'x-caused-by' ]?.trim(),
+      causedBy: sanitizeTraceId(normalized[ 'x-caused-by' ]),
     };
   }
 
   // 2. W3C traceparent: 00-{trace-id}-{parent-id}-{flags}
+  // The strict hex regex already guarantees a header/log-safe value.
   const traceparent = normalized[ 'traceparent' ];
   if (traceparent && /^[0-9a-f]{2}-[0-9a-f]{32}-[0-9a-f]{16}-[0-9a-f]{2}$/.test(traceparent)) {
     const parts = traceparent.split('-');
@@ -85,13 +115,15 @@ export function extractFromHeaders(
   const xray = normalized[ 'x-amzn-trace-id' ];
   if (xray && /Root=1-[0-9a-f]{8}-[0-9a-f]{24}/.test(xray)) {
     const rootMatch = xray.match(/Root=([^;]+)/);
-    const parentMatch = xray.match(/Parent=([^;]+)/);
     const sampledMatch = xray.match(/Sampled=([01])/);
     if (rootMatch) {
-      return {
-        correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        sampled: sampledMatch?.[ 1 ] === '1',
-      };
+      const correlationId = sanitizeTraceId(rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''));
+      if (correlationId) {
+        return {
+          correlationId,
+          sampled: sampledMatch?.[ 1 ] === '1',
+        };
+      }
     }
   }
 
@@ -111,25 +143,28 @@ export function extractFromSqs(
   const xray = xrayAttr?.stringValue || xrayAttr?.StringValue;
   if (xray && /Root=1-[0-9a-f]{8}-[0-9a-f]{24}/.test(xray)) {
     const rootMatch = xray.match(/Root=([^;]+)/);
-    const parentMatch = xray.match(/Parent=([^;]+)/);
     const sampledMatch = xray.match(/Sampled=([01])/);
     if (rootMatch) {
-      return {
-        correlationId: rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''),
-        sampled: sampledMatch?.[ 1 ] === '1',
-      };
+      const correlationId = sanitizeTraceId(rootMatch[ 1 ].replace(/^1-/, '').replace(/-/g, ''));
+      if (correlationId) {
+        return {
+          correlationId,
+          sampled: sampledMatch?.[ 1 ] === '1',
+        };
+      }
     }
   }
 
-  // Custom attributes
+  // Custom attributes (sanitize — a poisoned upstream attribute must not reach
+  // outbound headers or logs)
   const correlationAttr = messageAttributes[ 'correlationId' ];
-  const correlationId = (correlationAttr?.stringValue || correlationAttr?.StringValue)?.trim();
+  const correlationId = sanitizeTraceId(correlationAttr?.stringValue || correlationAttr?.StringValue);
   if (correlationId) {
     const sampledAttr = messageAttributes[ 'sampled' ];
     const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
       correlationId,
-      causedBy: (causedByAttr?.stringValue || causedByAttr?.StringValue)?.trim(),
+      causedBy: sanitizeTraceId(causedByAttr?.stringValue || causedByAttr?.StringValue),
       sampled: (sampledAttr?.stringValue || sampledAttr?.StringValue) === 'true',
     };
   }
@@ -146,12 +181,13 @@ export function extractFromSns(
   if (!messageAttributes) return undefined;
 
   const correlationAttr = messageAttributes[ 'correlationId' ];
-  if (correlationAttr?.Value?.trim()) {
+  const correlationId = sanitizeTraceId(correlationAttr?.Value);
+  if (correlationId) {
     const sampledAttr = messageAttributes[ 'sampled' ];
     const causedByAttr = messageAttributes[ 'causedBy' ];
     return {
-      correlationId: correlationAttr.Value.trim(),
-      causedBy: causedByAttr?.Value?.trim(),
+      correlationId,
+      causedBy: sanitizeTraceId(causedByAttr?.Value),
       sampled: sampledAttr?.Value === 'true',
     };
   }
@@ -367,13 +403,6 @@ export function createHttpHeaders(ctx: ExecutionContextData): Record<string, str
   // Use a stable fallback parent-id derived from correlationId.
   const parentId = toW3CParentId(ctx.correlationId);
   headers[ 'traceparent' ] = `00-${traceId}-${parentId}-${sampledFlag}`;
-
-  // Propagate the request-scoped trace id for cross-service correlation.
-  // No-op when no trace context is active.
-  const requestTraceId = getTraceId();
-  if (requestTraceId) {
-    headers[ TRACE_ID_HEADER ] = requestTraceId;
-  }
 
   return headers;
 }

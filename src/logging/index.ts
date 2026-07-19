@@ -1,8 +1,8 @@
 import { Logger, ILogObj, ISettingsParam } from "tslog";
 import { logtrailTransport } from "./logtrail";
 // Import the concrete leaf module (not the barrel) to keep this cycle-free:
-// trace-context imports only Node builtins.
-import { getTraceId } from "../core/runtime/trace-context";
+// execution-context/storage's only runtime dependency is node:async_hooks.
+import { getCurrentExecutionContext } from "../core/runtime/execution-context/storage";
 
 export interface ILogger extends Logger<ILogObj> {
 }
@@ -72,26 +72,33 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
 
     logger.attachTransport(logtrailTransport);
 
-    attachTraceIdToMeta(logger);
+    attachCorrelationIdToMeta(logger);
 
     return logger;
 }
 
 /**
  * Enrich every log line's structured `_meta` with the current request-scoped
- * `traceId` (when a trace context is active). This runs *before* tslog emits the
- * JSON log to the console, so downstream forwarders that lift `_meta` ship
- * `traceId` as a first-class field alongside the existing `requestId`.
+ * `correlationId` (when an ExecutionContext is active). This runs *before* tslog
+ * emits the JSON log to the console, so downstream forwarders that lift `_meta`
+ * ship `correlationId` as a first-class field alongside the existing `requestId`.
  *
- * Backward-compatible: a complete no-op when no trace context is established
- * (logs simply carry no `traceId`). The existing `requestId` — surfaced by the
- * forwarder from the AWS Lambda log prefix — is untouched.
+ * `correlationId` is the single id fw24 already propagates end-to-end across
+ * every hop — over HTTP (`x-correlation-id` / W3C `traceparent`) and over
+ * SQS/SNS/EventBridge (message attributes). Stamping it onto every log line lets
+ * Logtrail stitch a request across services using one field that is present on
+ * ALL entry points (API, SQS, task, mail), each of which establishes the
+ * ExecutionContext via `runWithExecutionContext`.
+ *
+ * Backward-compatible: a complete no-op when no ExecutionContext is established
+ * (logs simply carry no `correlationId`). The existing `requestId` — surfaced by
+ * the forwarder from the AWS Lambda log prefix — is untouched.
  *
  * Mechanism: tslog reads `settings.overwrite.addMeta` fresh on every `log()`
  * call. We delegate to the logger's own default meta builder and then stamp the
- * ambient `traceId` onto the produced `_meta`.
+ * ambient `correlationId` onto the produced `_meta`.
  */
-function attachTraceIdToMeta(logger: Logger<ILogObj>): void {
+function attachCorrelationIdToMeta(logger: Logger<ILogObj>): void {
     const anyLogger = logger as unknown as {
         _addMetaToLogObj: (logObj: ILogObj, logLevelId: number, logLevelName: string) => any;
     };
@@ -107,10 +114,10 @@ function attachTraceIdToMeta(logger: Logger<ILogObj>): void {
         ...logger.settings.overwrite,
         addMeta: (logObj: ILogObj, logLevelId: number, logLevelName: string) => {
             const withMeta = baseAddMeta(logObj, logLevelId, logLevelName);
-            const traceId = getTraceId();
+            const correlationId = getCurrentExecutionContext()?.correlationId;
             const meta = withMeta?.[ metaProperty ];
-            if (traceId && meta && typeof meta === 'object') {
-                meta.traceId = traceId;
+            if (correlationId && meta && typeof meta === 'object') {
+                meta.correlationId = correlationId;
             }
             return withMeta;
         },

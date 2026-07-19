@@ -20,7 +20,6 @@ import {
   extractFromHeaders,
   runWithExecutionContext,
 } from './execution-context';
-import { resolveIncomingTraceId, runWithTraceId } from './trace-context';
 import { RequestContext } from "./request-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
 import { ResponseContext } from "./response-context";
@@ -245,14 +244,10 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build automatic tags for easy filtering
     const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
 
-    // Establish a request-scoped trace id: reuse the upstream `x-trace-id`
-    // header if present, otherwise generate one. It is ambient (AsyncLocalStorage)
-    // so logs carry it and outbound cross-service calls can propagate it.
-    // Nests inside the execution context; both remain available throughout.
-    const traceId = resolveIncomingTraceId(request.headers);
-
-    // Run entire handler within trace + execution context
-    return runWithTraceId(traceId, () => runWithExecutionContext(execCtx, async () => {
+    // Run entire handler within the execution context. `correlationId` is ambient
+    // (AsyncLocalStorage) throughout, so logs carry it and outbound cross-service
+    // calls (createHttpHeaders / createSqsAttributes) propagate it.
+    return runWithExecutionContext(execCtx, async () => {
       // Set ctx.executionContext to point to the execution context
       ctx.executionContext = execCtx;
 
@@ -373,7 +368,7 @@ export abstract class APIController extends AbstractLambdaHandler {
         // Handle error response after span ends
         return this.handleException(request, err instanceof Error ? err : new Error(String(err)), response);
       });
-    }));
+    });
   }
 
   /**

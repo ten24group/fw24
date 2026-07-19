@@ -92,4 +92,5 @@ export {
   createStepFunctionsContext,
   toW3CTraceId,
   toW3CParentId,
+  sanitizeTraceId,
 } from './propagation';
