@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.44](https://github.com/ten24group/fw24/compare/v1.1.0-beta.43...v1.1.0-beta.44) (2026-07-19)
+
+
+### Features
+
+* **core:** cross-service trace propagation via x-trace-id ([902c98f](https://github.com/ten24group/fw24/commit/902c98f4570adee3c9a65c59de7a86f9c670dffe))
+* **core:** fold cross-service trace onto correlationId (drop x-trace-id) ([33b3328](https://github.com/ten24group/fw24/commit/33b3328ca87b3c9c7734c40cd67b965262696ec9))
+
 ## [1.1.0-beta.43](https://github.com/ten24group/fw24/compare/v1.1.0-beta.42...v1.1.0-beta.43) (2026-07-18)
 
 
