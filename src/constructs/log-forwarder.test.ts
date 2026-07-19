@@ -163,8 +163,25 @@ describe('LogForwarderConstruct', () => {
 
 		const env = forwarderEnv(Template.fromStack(stack), 'http://only-fields/');
 		expect(JSON.parse(env.FORWARDER_FIELDS)).toEqual([ 'orderId' ]);
-		// No version passed and none in env → the key is omitted entirely.
-		expect(env.FORWARDER_VERSION).toBeUndefined();
+		// Version is auto-derived (GITHUB_SHA in CI, else the app package.json version), so it's present
+		// even when not passed — the app never has to maintain it.
+		expect(typeof env.FORWARDER_VERSION).toBe('string');
+		expect(env.FORWARDER_VERSION.length).toBeGreaterThan(0);
+	});
+
+	it('auto-derives version from GITHUB_SHA when none is passed (no app/CI wiring)', async () => {
+		const { stack } = makeStack();
+		dummyFn(stack, 'AlphaFn');
+		const prev = process.env.GITHUB_SHA;
+		process.env.GITHUB_SHA = 'abcdef1234567890fedcba';
+		try {
+			await new LogForwarderConstruct({ stackName: 'main', ingestHttpUrl: 'http://autover/' }).construct();
+			const env = forwarderEnv(Template.fromStack(stack), 'http://autover/');
+			expect(env.FORWARDER_VERSION).toBe('abcdef123456'); // first 12 of the commit sha
+		} finally {
+			if (prev === undefined) delete process.env.GITHUB_SHA;
+			else process.env.GITHUB_SHA = prev;
+		}
 	});
 
 	it('merges custom rules on top of defaults by default', async () => {
