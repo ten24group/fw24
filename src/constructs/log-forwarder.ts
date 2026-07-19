@@ -1,5 +1,5 @@
 import * as path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { Aspects, Duration, RemovalPolicy, Stack, type IAspect } from 'aws-cdk-lib';
 import { CfnPermission, Function as LambdaFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
@@ -71,7 +71,10 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
 	liftFieldDefaults?: boolean;
 	/**
 	 * Release/version stamped on every shipped line (`version` field) so behavior changes can be attributed
-	 * to a deploy. Pass a semver or git sha. Defaults to `FORWARDER_VERSION` at deploy time; omitted if unset.
+	 * to a deploy. Resolved AUTOMATICALLY so neither the app nor CI has to maintain it (see
+	 * {@link LogForwarderConstruct.resolveVersion}): explicit value / `FORWARDER_VERSION` → the CI commit
+	 * (`GITHUB_SHA`, set automatically by GitHub Actions) → the app's `package.json` version → omitted.
+	 * Only set this to force a specific value.
 	 */
 	version?: string;
 	/**
@@ -233,6 +236,28 @@ export class LogForwarderConstruct implements FW24Construct {
 	}
 
 	/** App-declared fields to lift, merged with {@link DEFAULT_LIFT_FIELDS} unless liftFieldDefaults is false. */
+	/**
+	 * Resolve the version stamp automatically — no app code or CI wiring to maintain:
+	 *   explicit config / `FORWARDER_VERSION` → `GITHUB_SHA` (auto in GitHub Actions, first 12) →
+	 *   the app's package.json version (auto-bumped by release CI, read at synth) → '' (omitted).
+	 */
+	private resolveVersion(): string {
+		const explicit = this.config.version?.trim() || process.env.FORWARDER_VERSION?.trim();
+		if (explicit) return explicit;
+		const sha = process.env.GITHUB_SHA?.trim();
+		if (sha) return sha.slice(0, 12);
+		try {
+			const pkgPath = path.join(process.cwd(), 'package.json');
+			if (existsSync(pkgPath)) {
+				const pkg = JSON.parse(readFileSync(pkgPath, 'utf8')) as { version?: unknown };
+				if (typeof pkg.version === 'string' && pkg.version.trim()) return pkg.version.trim();
+			}
+		} catch {
+			/* version is best-effort — never fail synth over it */
+		}
+		return '';
+	}
+
 	private resolveLiftFields(): string[] {
 		const useDefaults = this.config.liftFieldDefaults !== false;
 		const base = useDefaults ? DEFAULT_LIFT_FIELDS : [];
@@ -257,7 +282,7 @@ export class LogForwarderConstruct implements FW24Construct {
 		const env = o.env ?? (process.env.FORWARDER_ENV?.trim() || cfg.environment || '');
 		const xApiKey = o.xApiKey ?? process.env.FORWARDER_INGEST_X_API_KEY?.trim();
 		const liftFields = this.resolveLiftFields();
-		const version = o.version ?? process.env.FORWARDER_VERSION?.trim() ?? '';
+		const version = this.resolveVersion();
 
 		if (!ingestHttpUrl) {
 			// Non-fatal: the forwarder handler no-ops without an ingest URL, so a backend can adopt the
