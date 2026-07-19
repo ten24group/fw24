@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.46](https://github.com/ten24group/fw24/compare/v1.1.0-beta.45...v1.1.0-beta.46) (2026-07-19)
+
+
+### Features
+
+* **log-forwarder:** app-declared field lifting (correlationId/business ids) + version stamp ([8492ca9](https://github.com/ten24group/fw24/commit/8492ca96d03d7030e1e25aa8affd036aa3c2d2df))
+
 ## [1.1.0-beta.45](https://github.com/ten24group/fw24/compare/v1.1.0-beta.44...v1.1.0-beta.45) (2026-07-19)
 
 
