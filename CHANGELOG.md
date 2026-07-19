@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.45](https://github.com/ten24group/fw24/compare/v1.1.0-beta.44...v1.1.0-beta.45) (2026-07-19)
+
+
+### Bug Fixes
+
+* **client:** cap AWS SDK userAgentAppId to avoid >50-char powertools warning ([d38a5c8](https://github.com/ten24group/fw24/commit/d38a5c8cfc5de8c14c6c489ac068b64592a96224))
+
 ## [1.1.0-beta.44](https://github.com/ten24group/fw24/compare/v1.1.0-beta.43...v1.1.0-beta.44) (2026-07-19)
 
 
