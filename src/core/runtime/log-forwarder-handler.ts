@@ -18,6 +18,13 @@
  * share app + env names — e.g. multiple developers each running `plusfan-trials` (APP_ENVIRONMENT=local)
  * in their OWN account — stay distinguishable instead of colliding under one `service` label.
  *
+ * Two more app-owned enrichments, both config-driven (the forwarder never guesses from free text):
+ *   • FIELD LIFTING (`FORWARDER_FIELDS`) — promote app-declared structured fields (e.g. `correlationId`,
+ *     `orderId`, `userId`) out of the tslog JSON args into queryable top-level record fields. This is
+ *     what lets Logtrail follow one request across services, or filter "all logs for order 991".
+ *   • VERSION (`FORWARDER_VERSION`) — stamp every line with the release that produced it, so behavior
+ *     changes can be attributed to a deploy.
+ *
  * ENV NAMESPACE: this function reads ONLY `FORWARDER_*` env vars — deliberately NOT the `LOGTRAIL_*`
  * keys used by fw24's in-process log transport. That guarantees the forwarder can never collide with,
  * or accidentally activate, fw24's in-process Logtrail machinery.
@@ -88,6 +95,58 @@ const BENIGN_RULES = compileRules(process.env.FORWARDER_NOISE_BENIGN);
 const DROP_RULES = compileRules(process.env.FORWARDER_NOISE_DROP);
 const DOWNGRADE_RULES = compileRules(process.env.FORWARDER_NOISE_DOWNGRADE);
 const HAS_NOISE_RULES = BENIGN_RULES.length > 0 || DROP_RULES.length > 0 || DOWNGRADE_RULES.length > 0;
+
+// ── App-declared field lifting (FORWARDER_FIELDS): a JSON array of field names the app wants promoted
+//    from its structured tslog args to queryable top-level record fields (e.g. correlationId, orderId).
+//    The app owns this list via the construct; the forwarder never scrapes free text for them. ──
+function parseFieldList(rawJson: string | undefined): string[] {
+	if (!rawJson) return [];
+	try {
+		const arr = JSON.parse(rawJson);
+		if (!Array.isArray(arr)) return [];
+		return [ ...new Set(arr.filter((s): s is string => typeof s === 'string' && s.trim().length > 0).map((s) => s.trim())) ];
+	} catch {
+		return [];
+	}
+}
+const LIFT_SET = new Set(parseFieldList(process.env.FORWARDER_FIELDS));
+const HAS_LIFT_FIELDS = LIFT_SET.size > 0;
+
+// Release/version stamp so every shipped line is attributable to the deploy that produced it. Set by the
+// construct at deploy time (semver or git sha); omitted from records when unset.
+const VERSION = process.env.FORWARDER_VERSION?.trim() || '';
+
+// Record keys the forwarder owns — a lifted app field must never overwrite one of these.
+const RESERVED_FIELD_KEYS = new Set([
+	'service', 'env', 'account', 'region', 'version', 'host', 'logger', 'requestId',
+	'level', 'reclassified', 'message', 'timestamp', 'logGroup', 'logStream',
+]);
+
+/**
+ * Lift the app-declared {@link LIFT_SET} fields out of a parsed tslog object into flat `{key: value}`
+ * string pairs. Scans the object's own scalar keys AND one level into its positional-argument objects
+ * ("0".."n"), so `logger.info('charge failed', { orderId, correlationId })` surfaces both. Reserved
+ * record keys are never lifted; values are coerced to trimmed strings; first occurrence wins.
+ */
+function extractLiftedFields(o: Record<string, unknown>): Record<string, string> {
+	const out: Record<string, string> = {};
+	const take = (k: string, v: unknown): void => {
+		if (out[k] !== undefined || RESERVED_FIELD_KEYS.has(k) || !LIFT_SET.has(k)) return;
+		if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+			const s = String(v).trim();
+			if (s) out[k] = s;
+		}
+	};
+	for (const [ k, v ] of Object.entries(o)) {
+		if (k === '_meta') continue;
+		if (v && typeof v === 'object' && !Array.isArray(v)) {
+			for (const [ k2, v2 ] of Object.entries(v as Record<string, unknown>)) take(k2, v2);
+		} else {
+			take(k, v);
+		}
+	}
+	return out;
+}
 
 // Levels that count as "error-ish" for the benign downgrade (mirrors the Vector A1 list).
 const ERRORISH = new Set([ 'error', 'err', 'fatal', 'critical', 'crit', 'emerg', 'alert', 'panic' ]);
@@ -208,6 +267,7 @@ function toVectorRecord(
 	let requestId: string | undefined;
 	let correlationId: string | undefined;
 	let tsIso: string | undefined;
+	let lifted: Record<string, string> | undefined;
 
 	// ── 1) NORMALIZE: peel AWS Lambda's `‹iso›\t‹requestId›\t‹LEVEL›\t‹message›` text prefix, if present.
 	const lambda = parseLambdaPrefix(raw);
@@ -238,6 +298,12 @@ function toVectorRecord(
 				parts.push(typeof v === 'string' ? v : JSON.stringify(v));
 			}
 			if (parts.length > 0) message = parts.join(' ');
+
+			// Lift app-declared structured fields (correlationId, orderId, …) into queryable record fields.
+			if (HAS_LIFT_FIELDS) {
+				const f = extractLiftedFields(o);
+				if (Object.keys(f).length > 0) lifted = f;
+			}
 		} catch {
 			// not JSON after all — keep the (prefix-stripped) message
 		}
@@ -270,9 +336,11 @@ function toVectorRecord(
 		env: ENV,
 		...(RESOLVED_ACCOUNT ? { account: RESOLVED_ACCOUNT } : {}),
 		...(REGION ? { region: REGION } : {}),
+		...(VERSION ? { version: VERSION } : {}),
 		host: shortHost(logGroup, logStream),
 		...(logger ? { logger } : {}),
 		...(requestId ? { requestId } : {}),
+		...(lifted ?? {}),
 		...(correlationId ? { correlationId } : {}),
 		level: resolvedLevel,
 		...(reclassified ? { reclassified } : {}),

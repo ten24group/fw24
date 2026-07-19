@@ -103,4 +103,55 @@ describe('log-forwarder handler runtime', () => {
 		expect(downgraded.reclassified).toBe('noise');
 		expect(recs.some((r) => r.message.includes('healthz'))).toBe(false);
 	});
+
+	it('lifts app-declared fields (top-level and nested in tslog args) into record fields', async () => {
+		// tslog JSON: positional "0" is the message, "1" is a structured arg object; correlationId is a
+		// top-level key. Only the configured fields (correlationId, orderId) are lifted — not userId/secret.
+		const line = JSON.stringify({
+			'0': 'charge failed for order',
+			'1': { orderId: '991', userId: 'u123', secret: 'nope' },
+			correlationId: 'corr-abc-123',
+			_meta: { name: 'PaymentsService', logLevelName: 'ERROR', date: '2024-01-01T00:00:00.000Z' },
+		});
+		const recs = await runHandler([line], {
+			FORWARDER_SERVICE: 'plusfan-trials',
+			FORWARDER_ENV: 'develop',
+			FORWARDER_FIELDS: JSON.stringify([ 'correlationId', 'orderId' ]),
+		});
+		expect(recs).toHaveLength(1);
+		const r = recs[0];
+		expect(r.correlationId).toBe('corr-abc-123'); // top-level key
+		expect(r.orderId).toBe('991'); // nested one level into the arg object
+		expect(r.userId).toBeUndefined(); // logged but not configured → not lifted
+		expect(r.secret).toBeUndefined();
+		expect(r.message).toContain('charge failed for order'); // message still readable
+		expect(r.level).toBe('error');
+	});
+
+	it('lifts nothing when FORWARDER_FIELDS is unset (opt-in)', async () => {
+		const line = JSON.stringify({ '0': 'hi', correlationId: 'x', _meta: { logLevelName: 'INFO' } });
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].correlationId).toBeUndefined();
+	});
+
+	it('never lets a lifted field overwrite a reserved record key', async () => {
+		// An app that logs a field literally named "service" must not clobber the forwarder's service label.
+		const line = JSON.stringify({ '0': 'hi', service: 'evil-override', orderId: '5', _meta: { logLevelName: 'INFO' } });
+		const recs = await runHandler([line], {
+			FORWARDER_SERVICE: 'plusfan-trials',
+			FORWARDER_ENV: 'develop',
+			FORWARDER_FIELDS: JSON.stringify([ 'service', 'orderId' ]),
+		});
+		expect(recs[0].service).toBe('plusfan-trials-develop'); // reserved key wins
+		expect(recs[0].orderId).toBe('5'); // ordinary field still lifted
+	});
+
+	it('stamps version on every record when FORWARDER_VERSION is set', async () => {
+		const recs = await runHandler(['hello'], {
+			FORWARDER_SERVICE: 'svc',
+			FORWARDER_ENV: 'test',
+			FORWARDER_VERSION: '1.2.3-beta.4',
+		});
+		expect(recs[0].version).toBe('1.2.3-beta.4');
+	});
 });

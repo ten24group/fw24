@@ -2,7 +2,7 @@ import { App, Stack, NestedStack } from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { Function as LambdaFunction, Runtime, Code } from 'aws-cdk-lib/aws-lambda';
 import { Fw24 } from '../core/fw24';
-import { LogForwarderConstruct, DEFAULT_LOG_NOISE_RULES } from './log-forwarder';
+import { LogForwarderConstruct, DEFAULT_LOG_NOISE_RULES, DEFAULT_LIFT_FIELDS } from './log-forwarder';
 
 /**
  * Unit tests for LogForwarderConstruct — verify the emitted CloudFormation without needing AWS creds:
@@ -134,6 +134,37 @@ describe('LogForwarderConstruct', () => {
 		const env = forwarderEnv(Template.fromStack(stack), 'http://infer/');
 		expect(env.FORWARDER_SERVICE).toBe('plusfan-trials-backend');
 		expect(env.FORWARDER_ENV).toBe('develop');
+	});
+
+	it('lifts correlationId by default and merges app-declared business fields', async () => {
+		const { stack } = makeStack();
+		dummyFn(stack, 'AlphaFn');
+		await new LogForwarderConstruct({
+			stackName: 'main',
+			ingestHttpUrl: 'http://fields/',
+			liftFields: [ 'orderId', 'userId' ],
+			version: '2.0.0',
+		}).construct();
+
+		const env = forwarderEnv(Template.fromStack(stack), 'http://fields/');
+		expect(JSON.parse(env.FORWARDER_FIELDS)).toEqual([ ...DEFAULT_LIFT_FIELDS, 'orderId', 'userId' ]);
+		expect(env.FORWARDER_VERSION).toBe('2.0.0');
+	});
+
+	it('lifts ONLY the app list when liftFieldDefaults is false', async () => {
+		const { stack } = makeStack();
+		dummyFn(stack, 'AlphaFn');
+		await new LogForwarderConstruct({
+			stackName: 'main',
+			ingestHttpUrl: 'http://only-fields/',
+			liftFields: [ 'orderId' ],
+			liftFieldDefaults: false,
+		}).construct();
+
+		const env = forwarderEnv(Template.fromStack(stack), 'http://only-fields/');
+		expect(JSON.parse(env.FORWARDER_FIELDS)).toEqual([ 'orderId' ]);
+		// No version passed and none in env → the key is omitted entirely.
+		expect(env.FORWARDER_VERSION).toBeUndefined();
 	});
 
 	it('merges custom rules on top of defaults by default', async () => {
