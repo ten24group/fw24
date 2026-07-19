@@ -137,7 +137,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
             persist?: boolean;
         } | undefined;
         emptyState?: import("./custom-page").ITableEmptyStateConfig | undefined;
-        rowFormatting?: readonly import("./custom-page").IFormattingRule[] | import("./custom-page").IFormattingRule[] | undefined;
+        rowFormatting?: import("./custom-page").IFormattingRule[] | readonly import("./custom-page").IFormattingRule[] | undefined;
         pagination?: import("./custom-page").IPaginationConfig | undefined;
         pageSize?: number | undefined;
         fetchStrategy: "eager" | "lazy";
@@ -150,7 +150,7 @@ declare const _default: <S extends EntitySchema<string, string, string> = Entity
         bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
         apiConfig: {
             search: {
-                defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
+                defaultSort?: "asc" | "desc" | FieldSortConfig | readonly FieldSortConfig[] | undefined;
                 apiMethod: "GET";
                 responseKey: string;
                 apiUrl: string;
@@ -225,7 +225,7 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
         persist?: boolean;
     } | undefined;
     emptyState?: import("./custom-page").ITableEmptyStateConfig | undefined;
-    rowFormatting?: readonly import("./custom-page").IFormattingRule[] | import("./custom-page").IFormattingRule[] | undefined;
+    rowFormatting?: import("./custom-page").IFormattingRule[] | readonly import("./custom-page").IFormattingRule[] | undefined;
     pagination?: import("./custom-page").IPaginationConfig | undefined;
     pageSize?: number | undefined;
     fetchStrategy: "eager" | "lazy";
@@ -238,7 +238,7 @@ export declare function makeViewEntityListConfig<S extends EntitySchema<string, 
     bulkActions?: readonly IEntityPageAction[] | IEntityPageAction[] | undefined;
     apiConfig: {
         search: {
-            defaultSort?: FieldSortConfig | readonly FieldSortConfig[] | "asc" | "desc" | undefined;
+            defaultSort?: "asc" | "desc" | FieldSortConfig | readonly FieldSortConfig[] | undefined;
             apiMethod: "GET";
             responseKey: string;
             apiUrl: string;

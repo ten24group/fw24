@@ -26,12 +26,16 @@ export interface LogForwarderNoiseRules {
 export interface LogForwarderConstructConfig extends IConstructConfig {
     /** Vector/Logtrail HTTP JSON ingest URL. Defaults to `FORWARDER_INGEST_URL` at deploy time. */
     ingestHttpUrl?: string;
-    /** Base `service` label for shipped logs (env is folded in). Defaults to `FORWARDER_SERVICE`. */
+    /**
+     * Base `service` label for shipped logs (env is folded in). Usually omit — defaults to the fw24
+     * app name (`APP_NAME`); override with this option or `FORWARDER_SERVICE`.
+     */
     service?: string;
     /**
      * Stage/owner label (e.g. `develop`, `prod`, `sandbox-nitin`) — folded into the `service` label
      * (`myservice-develop`) and emitted as `env` so develop/prod/per-developer logs are distinguishable
-     * in Logtrail. Defaults to `FORWARDER_ENV` at deploy time.
+     * in Logtrail. Usually omit — defaults to the fw24 environment (`APP_ENVIRONMENT`); override with
+     * this option or `FORWARDER_ENV`.
      */
     env?: string;
     /** Optional `x-api-key` when the ingest front requires it. Defaults to `FORWARDER_INGEST_X_API_KEY`. */

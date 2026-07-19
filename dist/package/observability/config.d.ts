@@ -91,7 +91,7 @@ export declare const CONFIG_DEFAULTS: {
     readonly truncation: {
         enabled: false;
         maxBytes: number;
-        fields: ("metadata" | "actor" | "data" | "attributes" | "context")[];
+        fields: ("metadata" | "attributes" | "actor" | "data" | "context")[];
     };
     readonly dynamoMaxItemSize: number;
     readonly dynamoMaxBatchSize: 25;
