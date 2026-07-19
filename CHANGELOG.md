@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.45](https://github.com/ten24group/fw24/compare/v1.1.0-beta.44...v1.1.0-beta.45) (2026-07-19)
+
+
+### Bug Fixes
+
+* **client:** cap AWS SDK userAgentAppId to avoid >50-char powertools warning ([d38a5c8](https://github.com/ten24group/fw24/commit/d38a5c8cfc5de8c14c6c489ac068b64592a96224))
+
+## [1.1.0-beta.44](https://github.com/ten24group/fw24/compare/v1.1.0-beta.43...v1.1.0-beta.44) (2026-07-19)
+
+
+### Features
+
+* **core:** cross-service trace propagation via x-trace-id ([902c98f](https://github.com/ten24group/fw24/commit/902c98f4570adee3c9a65c59de7a86f9c670dffe))
+* **core:** fold cross-service trace onto correlationId (drop x-trace-id) ([33b3328](https://github.com/ten24group/fw24/commit/33b3328ca87b3c9c7734c40cd67b965262696ec9))
+
+## [1.1.0-beta.43](https://github.com/ten24group/fw24/compare/v1.1.0-beta.42...v1.1.0-beta.43) (2026-07-18)
+
+
+### Bug Fixes
+
+* **log-forwarder:** make each subscription filter depend on the invoke permission ([fddfa6c](https://github.com/ten24group/fw24/commit/fddfa6c6a09e9ad42016b54777dcbd3112c73ae9))
+
+## [1.1.0-beta.42](https://github.com/ten24group/fw24/compare/v1.1.0-beta.41...v1.1.0-beta.42) (2026-07-18)
+
+
+### Features
+
+* **log-forwarder:** infer service + env from fw24 config (APP_NAME / APP_ENVIRONMENT) ([b7f16d5](https://github.com/ten24group/fw24/commit/b7f16d5e8fdd4d85ef96c51ddb12b4993ca96e62))
+* **log-forwarder:** tag records with AWS account + region to distinguish same-named deploys ([6f842fc](https://github.com/ten24group/fw24/commit/6f842fc2c7bd1af8c75d41fd8db965326ea7a54d))
+
 ## [1.1.0-beta.41](https://github.com/ten24group/fw24/compare/v1.1.0-beta.40...v1.1.0-beta.41) (2026-07-18)
 
 

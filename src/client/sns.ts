@@ -1,8 +1,9 @@
 import { SNSClient, PublishCommand, PublishBatchCommand, PublishBatchRequestEntry, MessageAttributeValue } from '@aws-sdk/client-sns';
 import { ExecutionContextData } from '../core/runtime/execution-context';
 import { getSnsTraceAttributes } from './util';
+import { FW24_UA_APP_ID } from './user-agent';
 
-const snsClient = new SNSClient({});
+const snsClient = new SNSClient({ userAgentAppId: FW24_UA_APP_ID });
 
 /**
  * Common message properties for FIFO topics and attributes

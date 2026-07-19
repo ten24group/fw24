@@ -1,6 +1,7 @@
 import { GetQueueAttributesCommand, SQSClient, SendMessageCommand, SendMessageCommandInput, MessageAttributeValue, SendMessageBatchCommand, SendMessageBatchRequestEntry } from '@aws-sdk/client-sqs';
 import { ExecutionContextData } from '../core/runtime/execution-context';
 import { getSqsTraceAttributes } from './util';
+import { FW24_UA_APP_ID } from './user-agent';
 
 /**
  * Lazily-created SQS client.
@@ -21,7 +22,9 @@ function getSqsClient(): SQSClient {
     const endpoint = process.env.AWS_ENDPOINT_URL_SQS?.trim() || undefined;
     if (sqsClient && sqsClientEndpoint === endpoint) return sqsClient;
     sqsClientEndpoint = endpoint;
-    sqsClient = endpoint ? new SQSClient({ endpoint }) : new SQSClient({});
+    sqsClient = endpoint
+        ? new SQSClient({ endpoint, userAgentAppId: FW24_UA_APP_ID })
+        : new SQSClient({ userAgentAppId: FW24_UA_APP_ID });
 
     return sqsClient;
 }

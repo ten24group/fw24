@@ -64,6 +64,11 @@ describe('LogForwarderConstruct', () => {
 			'AWS::Lambda::Permission',
 			Match.objectLike({ Principal: 'logs.amazonaws.com', Action: 'lambda:InvokeFunction' }),
 		);
+		// Regression: each filter must DependsOn the invoke permission — without it, a FRESH deploy
+		// races and CloudFormation creates the filter before the permission (CloudWatch Logs 400).
+		t.hasResource('AWS::Logs::SubscriptionFilter', {
+			DependsOn: Match.arrayWith([Match.stringLikeRegexp('AllowCloudWatchLogsInvoke')]),
+		});
 	});
 
 	it('injects the default noise/severity rules into the forwarder env', async () => {

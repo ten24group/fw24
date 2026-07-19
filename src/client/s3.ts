@@ -3,9 +3,11 @@ import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { Command } from "@smithy/smithy-client";
 import { MetadataBearer, RequestPresigningArguments } from "@smithy/types";
 import { SpanObserver } from '../observability/observers/span';
+import { FW24_UA_APP_ID } from './user-agent';
 
 
 export const defaultS3Client = new S3Client({
+    userAgentAppId: FW24_UA_APP_ID,
     requestChecksumCalculation: "WHEN_REQUIRED",
     responseChecksumValidation: "WHEN_REQUIRED"
 });

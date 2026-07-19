@@ -244,7 +244,9 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Build automatic tags for easy filtering
     const automaticTags = this.buildAutomaticTags(request, ctx.actor, event);
 
-    // Run entire handler within execution context
+    // Run entire handler within the execution context. `correlationId` is ambient
+    // (AsyncLocalStorage) throughout, so logs carry it and outbound cross-service
+    // calls (createHttpHeaders / createSqsAttributes) propagate it.
     return runWithExecutionContext(execCtx, async () => {
       // Set ctx.executionContext to point to the execution context
       ctx.executionContext = execCtx;

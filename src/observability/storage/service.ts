@@ -7,6 +7,7 @@
 
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import { FW24_UA_APP_ID } from '../../client/user-agent';
 import { Service } from '../../decorators';
 import { DIContainer, InjectConfig, InjectContainer, InjectEntitySchema } from '../../di';
 import { BaseEntityService } from '../../entity/base-service';
@@ -69,7 +70,7 @@ export class ObservabilityLogService extends BaseEntityService<ObservabilityLogS
     @InjectContainer()
     readonly container: IDIContainer
   ) {
-    const client = new DynamoDBClient({});
+    const client = new DynamoDBClient({ userAgentAppId: FW24_UA_APP_ID });
     const docClient = DynamoDBDocumentClient.from(client, {
       marshallOptions: { removeUndefinedValues: true, convertEmptyValues: true },
     });

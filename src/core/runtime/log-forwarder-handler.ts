@@ -265,6 +265,7 @@ function toVectorRecord(
 	let level: string | undefined;
 	let logger: string | undefined;
 	let requestId: string | undefined;
+	let correlationId: string | undefined;
 	let tsIso: string | undefined;
 	let lifted: Record<string, string> | undefined;
 
@@ -281,13 +282,14 @@ function toVectorRecord(
 	if (body.charCodeAt(0) === 0x7b /* { */) {
 		try {
 			const o = JSON.parse(body) as Record<string, unknown>;
-			const meta = o._meta as { name?: unknown; logLevelName?: unknown; date?: unknown } | undefined;
+			const meta = o._meta as { name?: unknown; logLevelName?: unknown; date?: unknown; correlationId?: unknown } | undefined;
 			if (meta && typeof meta === 'object') {
 				if (typeof meta.name === 'string') logger = meta.name;
 				if (typeof meta.logLevelName === 'string') level = meta.logLevelName.toLowerCase();
 				if (typeof meta.date === 'string' && !Number.isNaN(Date.parse(meta.date))) {
 					tsIso = new Date(meta.date).toISOString();
 				}
+				if (typeof meta.correlationId === 'string' && meta.correlationId.trim()) correlationId = meta.correlationId.trim();
 			}
 			// Positional args "0".."n" hold the logged message + params.
 			const parts: string[] = [];
@@ -339,6 +341,7 @@ function toVectorRecord(
 		...(logger ? { logger } : {}),
 		...(requestId ? { requestId } : {}),
 		...(lifted ?? {}),
+		...(correlationId ? { correlationId } : {}),
 		level: resolvedLevel,
 		...(reclassified ? { reclassified } : {}),
 		message: cleanMessage,

@@ -1,8 +1,7 @@
 import * as path from 'node:path';
 import { existsSync } from 'node:fs';
 import { Aspects, Duration, RemovalPolicy, Stack, type IAspect } from 'aws-cdk-lib';
-import { ServicePrincipal } from 'aws-cdk-lib/aws-iam';
-import { Function as LambdaFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
+import { CfnPermission, Function as LambdaFunction, Runtime } from 'aws-cdk-lib/aws-lambda';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
 import { FilterPattern, type IFilterPattern, LogGroup, RetentionDays, SubscriptionFilter } from 'aws-cdk-lib/aws-logs';
 import { LambdaDestination } from 'aws-cdk-lib/aws-logs-destinations';
@@ -149,6 +148,7 @@ const DEFAULT_SKIP_SUBSTRINGS = [
 class LogShippingAspect implements IAspect {
 	constructor(
 		private readonly forwarder: LambdaFunction,
+		private readonly invokePermission: IConstruct,
 		private readonly filterPattern: IFilterPattern,
 		private readonly skipSubstrings: string[],
 	) {}
@@ -168,13 +168,18 @@ class LogShippingAspect implements IAspect {
 			return; // aspects can visit a node more than once; add the filter only once
 		}
 		try {
-			new SubscriptionFilter(node, 'LogShipSubscription', {
+			const filter = new SubscriptionFilter(node, 'LogShipSubscription', {
 				logGroup: node.logGroup,
 				// addPermissions:false — a single wildcard invoke permission is added on the forwarder in
 				// construct(), so we don't accumulate one CfnPermission per log group.
 				destination: new LambdaDestination(this.forwarder, { addPermissions: false }),
 				filterPattern: this.filterPattern,
 			});
+			// CRITICAL: with addPermissions:false there is no automatic dependency between the filter and
+			// the (single, wildcard) invoke permission. On a FRESH deploy CloudFormation would otherwise
+			// race and create the filter before the permission, so CloudWatch Logs can't invoke the
+			// forwarder → "Could not execute the lambda function" 400. Force the ordering explicitly.
+			filter.node.addDependency(this.invokePermission);
 		} catch (err) {
 			// A lambda without an addressable log group (rare CDK internals) must never break synth.
 			// eslint-disable-next-line no-console
@@ -293,11 +298,14 @@ export class LogForwarderConstruct implements FW24Construct {
 			},
 		});
 
-		// One broad invoke permission instead of one per log group: keeps the forwarder's resource
-		// policy small (Lambda caps it at ~20KB) as the number of subscribed functions grows.
-		forwarder.addPermission('AllowCloudWatchLogsInvoke', {
-			principal: new ServicePrincipal('logs.amazonaws.com'),
+		// One broad invoke permission instead of one per log group: keeps the forwarder's resource policy
+		// small (Lambda caps it at ~20KB) as the number of subscribed functions grows. Created as an
+		// explicit CfnPermission so every subscription filter can `addDependency` on it (the aspect) —
+		// without that, a fresh deploy races and creates filters before the permission (a 400).
+		const invokePermission = new CfnPermission(forwarder, 'AllowCloudWatchLogsInvoke', {
+			principal: 'logs.amazonaws.com',
 			action: 'lambda:InvokeFunction',
+			functionName: forwarder.functionName,
 			sourceAccount: this.mainStack.account,
 			sourceArn: `arn:aws:logs:${this.mainStack.region}:${this.mainStack.account}:log-group:*`,
 		});
@@ -308,7 +316,7 @@ export class LogForwarderConstruct implements FW24Construct {
 		const scopeRoot: IConstruct =
 			o.subscribeScope === 'app' ? this.mainStack.node.root : this.mainStack;
 		Aspects.of(scopeRoot).add(
-			new LogShippingAspect(forwarder, o.filterPattern ?? FilterPattern.allEvents(), skip),
+			new LogShippingAspect(forwarder, invokePermission, o.filterPattern ?? FilterPattern.allEvents(), skip),
 		);
 
 		this.output = {} as FW24ConstructOutput;
