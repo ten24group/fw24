@@ -110,7 +110,7 @@ export class DynamoDBStreamToSNSProcessor extends BaseSQSEventProcessor<DynamoDB
             await this.publishStandardBatch(recordsToProcess);
         }
 
-        this.logger.info('Successfully published all stream records to SNS');
+        this.logger.debug('Successfully published all stream records to SNS');
     }
 
     /**
