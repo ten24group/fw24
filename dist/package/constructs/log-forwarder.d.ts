@@ -61,6 +61,14 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
     /** Merge {@link DEFAULT_LIFT_FIELDS} with {@link liftFields}. Default true. Set false to lift ONLY your list. */
     liftFieldDefaults?: boolean;
     /**
+     * Record keys to DROP before shipping, to cut ingest/storage size on low-value fields. Merged with
+     * {@link DEFAULT_DROP_FIELDS} (logStream, logGroup, source_type, reason) unless {@link dropFieldDefaults}
+     * is false. `host` (derived from logGroup/logStream) is always kept, and core keys can never be dropped.
+     */
+    dropFields?: string[];
+    /** Merge {@link DEFAULT_DROP_FIELDS} with {@link dropFields}. Default true. Set false to drop ONLY your list. */
+    dropFieldDefaults?: boolean;
+    /**
      * Release/version stamped on every shipped line (`version` field) so behavior changes can be attributed
      * to a deploy. Resolved AUTOMATICALLY so neither the app nor CI has to maintain it (see
      * {@link LogForwarderConstruct.resolveVersion}): explicit value / `FORWARDER_VERSION` → the CI commit
@@ -103,6 +111,11 @@ export declare const DEFAULT_LOG_NOISE_RULES: Required<Omit<LogForwarderNoiseRul
  */
 export declare const DEFAULT_LIFT_FIELDS: string[];
 /**
+ * Low-value record keys dropped by default to cut ingest/storage size. `host` is derived from
+ * logGroup/logStream and kept, so dropping the raw group/stream loses nothing actionable.
+ */
+export declare const DEFAULT_DROP_FIELDS: string[];
+/**
  * Out-of-band log shipping for every Lambda in the app.
  *
  * Attaches a CloudWatch Logs subscription filter to each function's log group (via an Aspect), routing
@@ -136,5 +149,7 @@ export declare class LogForwarderConstruct implements FW24Construct {
      */
     private resolveVersion;
     private resolveLiftFields;
+    /** Record keys to drop, merged with {@link DEFAULT_DROP_FIELDS} unless dropFieldDefaults is false. */
+    private resolveDropFields;
     construct(): Promise<void>;
 }
