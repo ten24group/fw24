@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.50](https://github.com/ten24group/fw24/compare/v1.1.0-beta.48...v1.1.0-beta.50) (2026-07-20)
+
+
+### Features
+
+* **log-forwarder:** drop-fields config — omit low-value fields to cut ingest/storage ([9cae8c4](https://github.com/ten24group/fw24/commit/9cae8c4027df6b29bbd3f4d51a34af699fe6c732))
+* **logging:** source-position pinning — link a log to the exact culprit line ([e663256](https://github.com/ten24group/fw24/commit/e6632568d05c1a34d185d888f1575ec61333c914))
+
 ## [1.1.0-beta.48](https://github.com/ten24group/fw24/compare/v1.1.0-beta.47...v1.1.0-beta.48) (2026-07-19)
 
 ## [1.1.0-beta.47](https://github.com/ten24group/fw24/compare/v1.1.0-beta.46...v1.1.0-beta.47) (2026-07-19)
