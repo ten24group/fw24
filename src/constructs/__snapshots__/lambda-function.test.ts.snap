@@ -21,11 +21,13 @@ exports[`LambdaFunction Construct Snapshot Tests should generate consistent Clou
         ],
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
-          "S3Key": "df550ce743474088f5a6f3fb4299997518c34d8fb95ed4129849c5232e008c79.zip",
+          "S3Key": "47710ad2f787a7f54ea44cfd0a9bf303f1f1121b67f9ae4b88482478be289817.zip",
         },
         "Description": "Test Lambda with full config",
         "Environment": {
           "Variables": {
+            "LOG_SOURCE_POSITION": "warn-error",
+            "NODE_OPTIONS": "--enable-source-maps",
             "VAR1": "value1",
             "VAR2": "value2",
           },
@@ -164,10 +166,13 @@ exports[`LambdaFunction Construct Snapshot Tests should generate consistent Clou
         ],
         "Code": {
           "S3Bucket": "cdk-hnb659fds-assets-123456789012-us-east-1",
-          "S3Key": "10eb9d09fdc04a561df6e9b42d36ddf50934fae3b100a5d56ac2849b22d2706d.zip",
+          "S3Key": "acdd324f9df0c08bcc02b83d8a3ab89345e4244b4ea34365d54d4869b5eeda87.zip",
         },
         "Environment": {
-          "Variables": {},
+          "Variables": {
+            "LOG_SOURCE_POSITION": "warn-error",
+            "NODE_OPTIONS": "--enable-source-maps",
+          },
         },
         "Handler": "index.handler",
         "Layers": [],

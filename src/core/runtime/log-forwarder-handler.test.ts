@@ -146,6 +146,30 @@ describe('log-forwarder handler runtime', () => {
 		expect(recs[0].orderId).toBe('5'); // ordinary field still lifted
 	});
 
+	it('lifts source position from _srcloc into codeFile/codeLine and keeps it out of the message', async () => {
+		const line = JSON.stringify({
+			'0': 'charge failed for order',
+			'1': { _srcloc: 'src/services/store-order.service.ts:337' },
+			_meta: { logLevelName: 'ERROR' },
+		});
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs).toHaveLength(1);
+		expect(recs[0].codeFile).toBe('src/services/store-order.service.ts');
+		expect(recs[0].codeLine).toBe('337');
+		expect(recs[0].message).toBe('charge failed for order'); // _srcloc must NOT be joined into the message
+		expect(recs[0].message).not.toContain('_srcloc');
+	});
+
+	it('lifts source position from tslog native _meta.path (mode all)', async () => {
+		const line = JSON.stringify({
+			'0': 'boom',
+			_meta: { logLevelName: 'ERROR', path: { filePathWithLine: '/var/task/src/lib/pay.ts:12', fileLine: '12' } },
+		});
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].codeFile).toBe('src/lib/pay.ts');
+		expect(recs[0].codeLine).toBe('12');
+	});
+
 	it('stamps version on every record when FORWARDER_VERSION is set', async () => {
 		const recs = await runHandler(['hello'], {
 			FORWARDER_SERVICE: 'svc',
@@ -153,5 +177,28 @@ describe('log-forwarder handler runtime', () => {
 			FORWARDER_VERSION: '1.2.3-beta.4',
 		});
 		expect(recs[0].version).toBe('1.2.3-beta.4');
+	});
+
+	it('strips tslog\'s "pretty" (non-JSON) date+level prefix so it does not duplicate the TIME/LVL columns', async () => {
+		const line = '2026-07-19 22:27:59.178 INFO AnalyticsMetricsService [getOrdersForPeriod] Found 12 orders for teamId: glob';
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'plusfan-team-playbook', FORWARDER_ENV: 'backend' });
+		expect(recs).toHaveLength(1);
+		expect(recs[0].level).toBe('info');
+		expect(recs[0].message).toBe('AnalyticsMetricsService [getOrdersForPeriod] Found 12 orders for teamId: glob');
+		expect(recs[0].message).not.toMatch(/^\d{4}-\d{2}-\d{2}/);
+	});
+
+	it('respects an ERROR/WARN level in the pretty tslog prefix', async () => {
+		const recs = await runHandler(
+			['2026-07-19 22:28:04.552 ERROR SportsPersistenceService Persistence batch failed'],
+			{ FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' },
+		);
+		expect(recs[0].level).toBe('error');
+		expect(recs[0].message).toBe('SportsPersistenceService Persistence batch failed');
+	});
+
+	it('leaves an ordinary line that merely starts with digits untouched (no false-positive strip)', async () => {
+		const recs = await runHandler(['404 not found for /widgets/123'], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].message).toBe('404 not found for /widgets/123');
 	});
 });

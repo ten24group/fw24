@@ -120,6 +120,7 @@ const VERSION = process.env.FORWARDER_VERSION?.trim() || '';
 const RESERVED_FIELD_KEYS = new Set([
 	'service', 'env', 'account', 'region', 'version', 'host', 'logger', 'requestId',
 	'level', 'reclassified', 'message', 'timestamp', 'logGroup', 'logStream',
+	'codeFile', 'codeLine',
 ]);
 
 /**
@@ -202,6 +203,20 @@ function fallbackLevel(raw: string): string {
 const KNOWN_LEVELS = new Set([ 'trace', 'debug', 'info', 'warn', 'warning', 'error', 'fatal' ]);
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
+// tslog's "pretty" (non-JSON) console format: `YYYY-MM-DD HH:MM:SS.mmm LEVEL rest…`. The date + level
+// it prints duplicate what Logtrail already shows in the dedicated TIME/LVL columns — peel them off
+// the message like the Lambda-prefix / tslog-JSON branches already do for their own shapes.
+const PRETTY_TSLOG_RE = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}\s+(TRACE|DEBUG|INFO|WARN(?:ING)?|ERROR|FATAL)\s+(.*)$/;
+
+/** Peel a tslog "pretty" `‹date› ‹time› LEVEL ‹rest›` prefix, if the line matches. */
+function parsePrettyTslogPrefix(raw: string): { level: string; message: string } | null {
+	const m = raw.match(PRETTY_TSLOG_RE);
+	if (!m) return null;
+	const [ , lvl, rest ] = m;
+	const level = lvl.toLowerCase().startsWith('warn') ? 'warn' : lvl.toLowerCase();
+	return { level, message: rest };
+}
+
 /**
  * AWS Lambda emits text logs as `‹iso›\t‹requestId›\t‹LEVEL›\t‹message›`. Peel that prefix off so the
  * message is just the text, and lift requestId/level out as fields (they're already shown as columns).
@@ -268,6 +283,7 @@ function toVectorRecord(
 	let correlationId: string | undefined;
 	let tsIso: string | undefined;
 	let lifted: Record<string, string> | undefined;
+	let codeLoc: string | undefined;
 
 	// ── 1) NORMALIZE: peel AWS Lambda's `‹iso›\t‹requestId›\t‹LEVEL›\t‹message›` text prefix, if present.
 	const lambda = parseLambdaPrefix(raw);
@@ -282,7 +298,10 @@ function toVectorRecord(
 	if (body.charCodeAt(0) === 0x7b /* { */) {
 		try {
 			const o = JSON.parse(body) as Record<string, unknown>;
-			const meta = o._meta as { name?: unknown; logLevelName?: unknown; date?: unknown; correlationId?: unknown } | undefined;
+			const meta = o._meta as {
+				name?: unknown; logLevelName?: unknown; date?: unknown; correlationId?: unknown;
+				path?: { filePathWithLine?: unknown; fileName?: unknown; fileLine?: unknown };
+			} | undefined;
 			if (meta && typeof meta === 'object') {
 				if (typeof meta.name === 'string') logger = meta.name;
 				if (typeof meta.logLevelName === 'string') level = meta.logLevelName.toLowerCase();
@@ -290,11 +309,22 @@ function toVectorRecord(
 					tsIso = new Date(meta.date).toISOString();
 				}
 				if (typeof meta.correlationId === 'string' && meta.correlationId.trim()) correlationId = meta.correlationId.trim();
+				// tslog native source position (mode 'all'): _meta.path.
+				const p = meta.path;
+				if (p && typeof p === 'object') {
+					if (typeof p.filePathWithLine === 'string') codeLoc = p.filePathWithLine;
+					else if (typeof p.fileName === 'string' && p.fileLine != null) codeLoc = `${p.fileName}:${p.fileLine}`;
+				}
 			}
-			// Positional args "0".."n" hold the logged message + params.
+			// Positional args "0".."n" hold the logged message + params. A `{ _srcloc }` arg (mode
+			// 'warn-error') carries the caller's source position — lift it, keep it out of the message.
 			const parts: string[] = [];
 			for (let i = 0; Object.prototype.hasOwnProperty.call(o, String(i)); i++) {
 				const v = o[String(i)];
+				if (v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { _srcloc?: unknown })._srcloc === 'string') {
+					if (!codeLoc) codeLoc = (v as { _srcloc: string })._srcloc;
+					continue;
+				}
 				parts.push(typeof v === 'string' ? v : JSON.stringify(v));
 			}
 			if (parts.length > 0) message = parts.join(' ');
@@ -307,11 +337,33 @@ function toVectorRecord(
 		} catch {
 			// not JSON after all — keep the (prefix-stripped) message
 		}
+	} else {
+		// ── 1) NORMALIZE: tslog's "pretty" (non-JSON) console format — strip its own duplicate date+level.
+		const pretty = parsePrettyTslogPrefix(body);
+		if (pretty) {
+			if (!level) level = pretty.level;
+			message = pretty.message;
+		}
 	}
 
 	const cleanMessage = stripAnsi(message);
 	let resolvedLevel = level ?? fallbackLevel(raw);
 	let reclassified: string | undefined;
+
+	// Split the captured source position into queryable `codeFile` + `codeLine` (for "open the exact
+	// culprit line" links). Path is made repo-relative (kept from its last `src/` segment).
+	let codeFile: string | undefined;
+	let codeLine: string | undefined;
+	if (codeLoc) {
+		const m = codeLoc.match(/^(.*?):(\d+)(?::\d+)?$/);
+		if (m) {
+			// Absolute path (…/src/…) → make repo-relative from the last `src/`. Already-relative paths
+			// (the logging layer emits `src/…`) are kept as-is.
+			const srcIdx = m[1].lastIndexOf('/src/');
+			codeFile = srcIdx >= 0 ? m[1].slice(srcIdx + 1) : m[1];
+			codeLine = m[2];
+		}
+	}
 
 	// ── Layers 2–4: app-level noise / severity rules, applied to the normalized message. ──
 	if (HAS_NOISE_RULES) {
@@ -342,6 +394,8 @@ function toVectorRecord(
 		...(requestId ? { requestId } : {}),
 		...(lifted ?? {}),
 		...(correlationId ? { correlationId } : {}),
+		...(codeFile ? { codeFile } : {}),
+		...(codeLine ? { codeLine } : {}),
 		level: resolvedLevel,
 		...(reclassified ? { reclassified } : {}),
 		message: cleanMessage,
