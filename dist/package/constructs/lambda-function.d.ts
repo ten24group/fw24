@@ -53,6 +53,15 @@ export interface LambdaFunctionProps {
     functionTimeout?: number;
     processorArchitecture?: 'x86_64' | 'arm_64';
     /**
+     * Source-position capture for "pin the exact culprit line" code links in Logtrail.
+     *   - `'warn-error'` (default): capture `file:line` for warn/error/fatal only (cheap — hot info/debug
+     *     paths pay nothing). Adds `--enable-source-maps` so positions resolve to real source.
+     *   - `'all'`: capture for every emitted log (adds cost on busy paths).
+     *   - `'off'`: disable entirely.
+     * Only meaningful with sourcemaps on (fw24 default). Set at the app config level to apply to all functions.
+     */
+    logSourcePosition?: 'off' | 'warn-error' | 'all';
+    /**
      * Additional properties for the Node.js Lambda function.
      */
     functionProps?: Omit<NodejsFunctionProps, 'layers'> & {
