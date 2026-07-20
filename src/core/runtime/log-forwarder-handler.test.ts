@@ -170,6 +170,28 @@ describe('log-forwarder handler runtime', () => {
 		expect(recs[0].codeLine).toBe('12');
 	});
 
+	it('drops logStream/logGroup by default (keeps host) to cut size', async () => {
+		const recs = await runHandler(['hello'], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].logGroup).toBeUndefined();
+		expect(recs[0].logStream).toBeUndefined();
+		expect(recs[0].host).toBeDefined(); // host (derived) is kept
+		expect(recs[0].message).toBe('hello');
+	});
+
+	it('respects FORWARDER_DROP_FIELDS (empty = drop nothing; core keys never dropped)', async () => {
+		const keepAll = await runHandler(['hi'], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test', FORWARDER_DROP_FIELDS: '[]' });
+		expect(keepAll[0].logGroup).toBeDefined();
+		expect(keepAll[0].logStream).toBeDefined();
+
+		const custom = await runHandler(['hi'], {
+			FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test',
+			FORWARDER_DROP_FIELDS: JSON.stringify(['logGroup', 'service', 'message']),
+		});
+		expect(custom[0].logGroup).toBeUndefined(); // dropped
+		expect(custom[0].service).toBe('svc-test'); // core key never dropped
+		expect(custom[0].message).toBe('hi'); // core key never dropped
+	});
+
 	it('stamps version on every record when FORWARDER_VERSION is set', async () => {
 		const recs = await runHandler(['hello'], {
 			FORWARDER_SERVICE: 'svc',
