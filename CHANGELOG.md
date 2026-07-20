@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.51](https://github.com/ten24group/fw24/compare/v1.1.0-beta.50...v1.1.0-beta.51) (2026-07-20)
+
+
+### Bug Fixes
+
+* **logging:** emit JSON in Lambda so the forwarder can lift fields (correlationId/business ids/codeFile) ([c9c477a](https://github.com/ten24group/fw24/commit/c9c477adc28207a173164d130a895d45f5a4e9d4))
+
 ## [1.1.0-beta.50](https://github.com/ten24group/fw24/compare/v1.1.0-beta.48...v1.1.0-beta.50) (2026-07-20)
 
 
