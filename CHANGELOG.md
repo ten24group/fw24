@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.49](https://github.com/ten24group/fw24/compare/v1.1.0-beta.48...v1.1.0-beta.49) (2026-07-20)
+
+
+### Features
+
+* **logging:** source-position pinning — link a log to the exact culprit line ([e663256](https://github.com/ten24group/fw24/commit/e6632568d05c1a34d185d888f1575ec61333c914))
+
 ## [1.1.0-beta.48](https://github.com/ten24group/fw24/compare/v1.1.0-beta.47...v1.1.0-beta.48) (2026-07-19)
 
 ## [1.1.0-beta.47](https://github.com/ten24group/fw24/compare/v1.1.0-beta.46...v1.1.0-beta.47) (2026-07-19)
