@@ -19,6 +19,44 @@ const logLevels: any = {
 
 const logLevel = logLevels[ (process.env.LOG_LEVEL || 'info').toLowerCase() ];
 
+/**
+ * Source-position capture mode for "pin the exact culprit" code links. Set by the fw24 function
+ * construct from the `logSourcePosition` app config (default `warn-error`, only when sourcemaps are on):
+ *   - `off`        : never capture position (current prod behaviour).
+ *   - `warn-error` : capture `file:line` ONLY for warn/error/fatal — the culprits worth pinning — so
+ *                    hot info/debug paths pay nothing (captured lazily per-call, see the wrapper below).
+ *   - `all`        : tslog captures position for every emitted log (native `_meta.path`).
+ * Positions only resolve to real source when the Lambda runs with `--enable-source-maps` (the construct
+ * adds it whenever this is enabled).
+ */
+const SOURCE_POSITION_MODE = (process.env.LOG_SOURCE_POSITION?.trim().toLowerCase() || 'off') as
+    'off' | 'warn-error' | 'all';
+
+/** Keep a source path from its last `src/` segment so it maps to a GitHub blob path (best-effort). */
+function repoRelativePath(p: string): string {
+    const i = p.lastIndexOf('/src/');
+    if (i >= 0) return p.slice(i + 1);
+    const slash = p.lastIndexOf('/');
+    return slash >= 0 ? p.slice(slash + 1) : p;
+}
+
+/**
+ * Caller location as `src/file.ts:line` from a fresh stack (source-mapped when `--enable-source-maps`
+ * is on). Skips this module + tslog + node_modules frames so it points at the real call site.
+ */
+function captureSrcLoc(): string | undefined {
+    const stack = new Error().stack;
+    if (!stack) return undefined;
+    const lines = stack.split('\n');
+    for (let i = 2; i < lines.length; i++) {
+        const m = lines[ i ].match(/\(?([^\s()]+\.[cm]?[tj]s):(\d+):\d+\)?\s*$/);
+        if (m && !/node_modules|[/\\]logging[/\\]index|tslog/.test(m[ 1 ])) {
+            return `${repoRelativePath(m[ 1 ])}:${m[ 2 ]}`;
+        }
+    }
+    return undefined;
+}
+
 export const createLogger = (_options: string | Function | ISettingsParam<ILogObj>, _logLevel?: 0 | 1 | 2 | 3 | 4 | 5 | 6) => {
 
     _logLevel = _logLevel ?? logLevel;
@@ -31,9 +69,11 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
         _options = { name: _options, minLevel: logLevel };
     }
 
-    // show line number only for debug and trace
-    if (!_options.hideLogPositionForProduction && logLevel > 2) {
-        _options.hideLogPositionForProduction = true;
+    // In prod (info+) tslog hides position by default. Only let tslog capture it natively for mode
+    // 'all'; 'warn-error' captures lazily per-call below (cheaper), 'off' stays hidden. An explicit
+    // caller-provided value always wins.
+    if (_options.hideLogPositionForProduction === undefined && logLevel > 2) {
+        _options.hideLogPositionForProduction = SOURCE_POSITION_MODE !== 'all';
     }
 
     // set time format
@@ -73,6 +113,19 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     logger.attachTransport(logtrailTransport);
 
     attachCorrelationIdToMeta(logger);
+
+    // Mode 'warn-error': capture source position ONLY for warn/error/fatal (the culprits worth pinning),
+    // so info/debug hot paths pay nothing. Injected as a `_srcloc` arg that the forwarder lifts into
+    // codeFile/codeLine (and strips from the shipped message).
+    if (SOURCE_POSITION_MODE === 'warn-error') {
+        for (const lvl of [ 'warn', 'error', 'fatal' ] as const) {
+            const orig = (logger as any)[ lvl ].bind(logger);
+            (logger as any)[ lvl ] = (...args: any[]) => {
+                const loc = captureSrcLoc();
+                return loc ? orig(...args, { _srcloc: loc }) : orig(...args);
+            };
+        }
+    }
 
     return logger;
 }
