@@ -82,6 +82,12 @@ export const createLogger = (_options: string | Function | ISettingsParam<ILogOb
     }
 
     const logger = new Logger({
+        // In Lambda (and when LOG_FORMAT=json) emit structured JSON so the log-forwarder can lift fields
+        // (correlationId, business ids via liftFields, codeFile/codeLine). tslog's default 'pretty' output
+        // bakes args into the message string and CANNOT be lifted. Locally, keep readable pretty output.
+        type: (process.env.AWS_LAMBDA_FUNCTION_NAME || (process.env.LOG_FORMAT || '').toLowerCase() === 'json')
+            ? 'json'
+            : 'pretty',
         stylePrettyLogs: false,
         maskValuesOfKeys: [ 'password', 'confirmPassword', 'secret', 'token', 'apiKey', 'accessToken', 'refreshToken', 'clientSecret', 'clientId', 'clientToken', 'clientCode', 'clientKey' ],
         maskValuesOfKeysCaseInsensitive: true,
