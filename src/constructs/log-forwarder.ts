@@ -70,6 +70,14 @@ export interface LogForwarderConstructConfig extends IConstructConfig {
 	/** Merge {@link DEFAULT_LIFT_FIELDS} with {@link liftFields}. Default true. Set false to lift ONLY your list. */
 	liftFieldDefaults?: boolean;
 	/**
+	 * Record keys to DROP before shipping, to cut ingest/storage size on low-value fields. Merged with
+	 * {@link DEFAULT_DROP_FIELDS} (logStream, logGroup, source_type, reason) unless {@link dropFieldDefaults}
+	 * is false. `host` (derived from logGroup/logStream) is always kept, and core keys can never be dropped.
+	 */
+	dropFields?: string[];
+	/** Merge {@link DEFAULT_DROP_FIELDS} with {@link dropFields}. Default true. Set false to drop ONLY your list. */
+	dropFieldDefaults?: boolean;
+	/**
 	 * Release/version stamped on every shipped line (`version` field) so behavior changes can be attributed
 	 * to a deploy. Resolved AUTOMATICALLY so neither the app nor CI has to maintain it (see
 	 * {@link LogForwarderConstruct.resolveVersion}): explicit value / `FORWARDER_VERSION` → the CI commit
@@ -135,6 +143,12 @@ export const DEFAULT_LOG_NOISE_RULES: Required<Omit<LogForwarderNoiseRules, 'use
  * the moment an app logs it. Apps add their own business ids (orderId, userId, …) via `liftFields`.
  */
 export const DEFAULT_LIFT_FIELDS = [ 'correlationId' ];
+
+/**
+ * Low-value record keys dropped by default to cut ingest/storage size. `host` is derived from
+ * logGroup/logStream and kept, so dropping the raw group/stream loses nothing actionable.
+ */
+export const DEFAULT_DROP_FIELDS = [ 'logStream', 'logGroup', 'source_type', 'reason' ];
 
 // CDK-internal / custom-resource lambdas we never subscribe (noise + cross-stack singletons),
 // plus the forwarder itself (belt-and-suspenders; it is also excluded by reference).
@@ -264,6 +278,13 @@ export class LogForwarderConstruct implements FW24Construct {
 		return [ ...new Set([ ...base, ...(this.config.liftFields ?? []) ].map((s) => s.trim()).filter(Boolean)) ];
 	}
 
+	/** Record keys to drop, merged with {@link DEFAULT_DROP_FIELDS} unless dropFieldDefaults is false. */
+	private resolveDropFields(): string[] {
+		const useDefaults = this.config.dropFieldDefaults !== false;
+		const base = useDefaults ? DEFAULT_DROP_FIELDS : [];
+		return [ ...new Set([ ...base, ...(this.config.dropFields ?? []) ].map((s) => s.trim()).filter(Boolean)) ];
+	}
+
 	async construct(): Promise<void> {
 		// Default stack (no hardcoded name) — respects stackName/parentStackName if the app sets them.
 		this.mainStack = this.fw24.getStack(this.config.stackName, this.config.parentStackName);
@@ -282,6 +303,7 @@ export class LogForwarderConstruct implements FW24Construct {
 		const env = o.env ?? (process.env.FORWARDER_ENV?.trim() || cfg.environment || '');
 		const xApiKey = o.xApiKey ?? process.env.FORWARDER_INGEST_X_API_KEY?.trim();
 		const liftFields = this.resolveLiftFields();
+		const dropFields = this.resolveDropFields();
 		const version = this.resolveVersion();
 
 		if (!ingestHttpUrl) {
@@ -318,6 +340,8 @@ export class LogForwarderConstruct implements FW24Construct {
 				...(o.batchFormat ? { FORWARDER_BATCH_FORMAT: o.batchFormat } : {}),
 				...(o.maxBatchBytes != null ? { FORWARDER_MAX_BATCH_BYTES: String(o.maxBatchBytes) } : {}),
 				...(liftFields.length ? { FORWARDER_FIELDS: JSON.stringify(liftFields) } : {}),
+				// Always set (even when empty) so the handler drops exactly what the config says, not its own default.
+				FORWARDER_DROP_FIELDS: JSON.stringify(dropFields),
 				...(version ? { FORWARDER_VERSION: version } : {}),
 				...this.resolveNoiseEnv(),
 			},

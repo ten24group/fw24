@@ -116,6 +116,19 @@ const HAS_LIFT_FIELDS = LIFT_SET.size > 0;
 // construct at deploy time (semver or git sha); omitted from records when unset.
 const VERSION = process.env.FORWARDER_VERSION?.trim() || '';
 
+// ── Field drop-list (FORWARDER_DROP_FIELDS): record keys to OMIT before shipping, to cut ingest/storage
+//    size on low-value fields. Default drops logStream/logGroup/source_type/reason (host is still kept).
+//    The construct sets this from the `dropFields` config; unset → the defaults below. Core keys can
+//    never be dropped (belt-and-suspenders against misconfig). ──
+const DEFAULT_DROP_FIELDS = [ 'logStream', 'logGroup', 'source_type', 'reason' ];
+const NEVER_DROP = new Set([ 'service', 'level', 'message', 'timestamp' ]);
+const DROP_SET = new Set(
+	(process.env.FORWARDER_DROP_FIELDS !== undefined
+		? parseFieldList(process.env.FORWARDER_DROP_FIELDS)
+		: DEFAULT_DROP_FIELDS
+	).filter((k) => !NEVER_DROP.has(k)),
+);
+
 // Record keys the forwarder owns — a lifted app field must never overwrite one of these.
 const RESERVED_FIELD_KEYS = new Set([
 	'service', 'env', 'account', 'region', 'version', 'host', 'logger', 'requestId',
@@ -383,7 +396,7 @@ function toVectorRecord(
 		}
 	}
 
-	return {
+	const rec: Record<string, unknown> = {
 		service: SERVICE,
 		env: ENV,
 		...(RESOLVED_ACCOUNT ? { account: RESOLVED_ACCOUNT } : {}),
@@ -403,6 +416,10 @@ function toVectorRecord(
 		logGroup,
 		logStream,
 	};
+	// Drop low-value fields (FORWARDER_DROP_FIELDS) to cut ingest/storage size. `host` (derived from
+	// logGroup/logStream) is kept, so dropping the raw group/stream loses nothing actionable.
+	if (DROP_SET.size) for (const k of DROP_SET) delete rec[k];
+	return rec;
 }
 
 /** Split pre-serialized lines into sub-batches under MAX_BATCH_BYTES (uncompressed). */
