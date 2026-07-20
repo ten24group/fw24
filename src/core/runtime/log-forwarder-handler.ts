@@ -329,24 +329,32 @@ function toVectorRecord(
 					else if (typeof p.fileName === 'string' && p.fileLine != null) codeLoc = `${p.fileName}:${p.fileLine}`;
 				}
 			}
-			// Positional args "0".."n" hold the logged message + params. A `{ _srcloc }` arg (mode
-			// 'warn-error') carries the caller's source position — lift it, keep it out of the message.
-			const parts: string[] = [];
-			for (let i = 0; Object.prototype.hasOwnProperty.call(o, String(i)); i++) {
-				const v = o[String(i)];
-				if (v && typeof v === 'object' && !Array.isArray(v) && typeof (v as { _srcloc?: unknown })._srcloc === 'string') {
-					if (!codeLoc) codeLoc = (v as { _srcloc: string })._srcloc;
-					continue;
-				}
-				parts.push(typeof v === 'string' ? v : JSON.stringify(v));
-			}
-			if (parts.length > 0) message = parts.join(' ');
-
-			// Lift app-declared structured fields (correlationId, orderId, …) into queryable record fields.
+			// Lift app-declared structured fields (correlationId, orderId, …) FIRST, so those keys can be
+			// kept OUT of the human message below (no duplicating a lifted id in both the field and the text).
 			if (HAS_LIFT_FIELDS) {
 				const f = extractLiftedFields(o);
 				if (Object.keys(f).length > 0) lifted = f;
 			}
+			const liftedKeys = lifted ? new Set(Object.keys(lifted)) : new Set<string>();
+
+			// Positional args "0".."n" hold the logged message + params. Build the human message from the
+			// string args plus the NON-lifted keys of object args (lifted ids become fields, not message
+			// noise). A `{ _srcloc }` arg carries the caller's source position — lifted, kept out of the text.
+			const parts: string[] = [];
+			for (let i = 0; Object.prototype.hasOwnProperty.call(o, String(i)); i++) {
+				const v = o[String(i)];
+				if (typeof v === 'string') { parts.push(v); continue; }
+				if (v && typeof v === 'object' && !Array.isArray(v)) {
+					const obj = v as Record<string, unknown>;
+					if (typeof obj._srcloc === 'string') { if (!codeLoc) codeLoc = obj._srcloc as string; continue; }
+					const rest: Record<string, unknown> = {};
+					for (const [ k, val ] of Object.entries(obj)) if (!liftedKeys.has(k)) rest[ k ] = val;
+					if (Object.keys(rest).length > 0) parts.push(JSON.stringify(rest));
+					continue;
+				}
+				parts.push(JSON.stringify(v));
+			}
+			if (parts.length > 0) message = parts.join(' ');
 		} catch {
 			// not JSON after all — keep the (prefix-stripped) message
 		}

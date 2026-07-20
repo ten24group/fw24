@@ -128,6 +128,21 @@ describe('log-forwarder handler runtime', () => {
 		expect(r.level).toBe('error');
 	});
 
+	it('keeps lifted keys OUT of the message (no duplication), preserves non-lifted keys', async () => {
+		const line = JSON.stringify({
+			'0': 'Duplicate store order detected',
+			'1': { remoteId: '1625', orderId: 'store_woo_o_1625' },
+			_meta: { logLevelName: 'INFO' },
+		});
+		const recs = await runHandler([line], {
+			FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test',
+			FORWARDER_FIELDS: JSON.stringify([ 'orderId' ]),
+		});
+		expect(recs[0].orderId).toBe('store_woo_o_1625'); // lifted to a field
+		expect(recs[0].message).toBe('Duplicate store order detected {"remoteId":"1625"}'); // orderId gone, remoteId kept
+		expect(recs[0].message).not.toContain('orderId');
+	});
+
 	it('lifts nothing when FORWARDER_FIELDS is unset (opt-in)', async () => {
 		const line = JSON.stringify({ '0': 'hi', correlationId: 'x', _meta: { logLevelName: 'INFO' } });
 		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
