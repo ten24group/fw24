@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.52](https://github.com/ten24group/fw24/compare/v1.1.0-beta.51...v1.1.0-beta.52) (2026-07-20)
+
+
+### Features
+
+* **log-forwarder:** keep lifted keys out of the message (no duplication) ([3c7660c](https://github.com/ten24group/fw24/commit/3c7660c4510659eabc7ec1362cbcbcde1c9d0391))
+
 ## [1.1.0-beta.51](https://github.com/ten24group/fw24/compare/v1.1.0-beta.50...v1.1.0-beta.51) (2026-07-20)
 
 
