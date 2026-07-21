@@ -67,12 +67,15 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
     }
 
     if (!this.shouldIndexEntity(entityName)) {
+      // Routine/expected for any entity that doesn't opt into search — not warning-worthy, and
+      // subclasses that override shouldIndexEntity() entirely (e.g. a model.search-driven check)
+      // don't populate these two, so only log them when they actually drove the decision.
       const allowedEntityNames = this.getAllowedEntityNames();
       const excludedEntityNames = this.getExcludedEntityNames();
-      this.logger.warn('Skipping search indexing for entity based on filtering rules', {
+      this.logger.debug('Skipping search indexing for entity based on filtering rules', {
         entityName,
-        allowedEntityNames,
-        excludedEntityNames
+        ...(allowedEntityNames !== undefined ? { allowedEntityNames } : {}),
+        ...(excludedEntityNames !== undefined ? { excludedEntityNames } : {}),
       });
       return null;
     }
