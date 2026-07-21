@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.53](https://github.com/ten24group/fw24/compare/v1.1.0-beta.52...v1.1.0-beta.53) (2026-07-21)
+
+
+### Bug Fixes
+
+* **search:** auto-provision a missing index instead of throwing ([0c7e46d](https://github.com/ten24group/fw24/commit/0c7e46dfa2ffd422fff9def9f63482200d522bd6))
+
 ## [1.1.0-beta.52](https://github.com/ten24group/fw24/compare/v1.1.0-beta.51...v1.1.0-beta.52) (2026-07-20)
 
 
