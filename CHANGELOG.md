@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.54](https://github.com/ten24group/fw24/compare/v1.1.0-beta.53...v1.1.0-beta.54) (2026-07-21)
+
+
+### Bug Fixes
+
+* **search:** stop the misleading warn on every routine search-skip ([ecfde39](https://github.com/ten24group/fw24/commit/ecfde394b9cdf615142b69b889556369ebcfefe5))
+
 ## [1.1.0-beta.53](https://github.com/ten24group/fw24/compare/v1.1.0-beta.52...v1.1.0-beta.53) (2026-07-21)
 
 
