@@ -4,7 +4,7 @@ import { BaseSQSEventProcessor } from '../../core/runtime/event-processor/base-s
 import { BaseEventRecord, IEventDataExtractor } from '../../core/types/event-processor-types';
 import { resolveEnvValueFor } from '../../utils';
 import { BaseSearchEngine } from '../engines/base';
-import { SearchEngineError, SearchValidationError } from '../errors';
+import { SearchValidationError } from '../errors';
 import { makeEntitySearchIndexName } from '../search-utils';
 import { SEARCH_INDEXER_ENV_KEYS, SearchIndexEntry } from './interfaces';
 import { BatchProgress } from '../../observability/utils/batch-progress';
@@ -371,7 +371,15 @@ export abstract class BaseSearchIndexer<T extends IEventDataExtractor<TEvent, TP
   protected async ensureIndexExists(indexName: string): Promise<void> {
     const exists = await this.searchEngine.indexExists(indexName);
     if (!exists) {
-      throw new SearchEngineError(`Index ${indexName} does not exist`, { indexName });
+      // Auto-provision instead of erroring. Previously this threw "Index does not exist", so any
+      // searchable entity whose index was never provisioned (added after initial setup, or a fresh
+      // deploy) errored on EVERY sync forever with no self-heal. The engine creates the index
+      // (primaryKey defaults to `id`, which the indexer stamps on every document) and applies
+      // default settings; a richer per-entity config can still be applied via the entity search
+      // service's initSearchIndex(). Entities that should NOT be indexed are filtered upstream by
+      // shouldIndexEntity(), so this only creates indexes for entities meant to be searchable.
+      this.logger.info('Index does not exist — auto-creating', { indexName });
+      await this.searchEngine.initIndex({ indexName }, true);
     }
   }
 
