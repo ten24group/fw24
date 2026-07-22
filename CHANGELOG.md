@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.55](https://github.com/ten24group/fw24/compare/v1.1.0-beta.53...v1.1.0-beta.55) (2026-07-22)
+
+
+### Bug Fixes
+
+* **log-forwarder:** classify Lambda crash/timeout/OOM lines as error ([a7bd115](https://github.com/ten24group/fw24/commit/a7bd1150b31d9fec5211de51e679ff81028ba5d7))
+* **search:** stop the misleading warn on every routine search-skip ([ecfde39](https://github.com/ten24group/fw24/commit/ecfde394b9cdf615142b69b889556369ebcfefe5))
+
 ## [1.1.0-beta.53](https://github.com/ten24group/fw24/compare/v1.1.0-beta.52...v1.1.0-beta.53) (2026-07-21)
 
 
