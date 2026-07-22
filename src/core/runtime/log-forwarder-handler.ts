@@ -207,8 +207,14 @@ function stripAnsi(s: string): string {
 	return s.includes('\x1b') ? s.replace(ANSI_RE, '') : s;
 }
 
+// Lambda platform/runtime failures that crash or kill the invocation outright — a timeout, an OOM
+// kill, or the runtime exiting early. None of these carry an ERROR/FATAL/WARN token of their own, so
+// without this they'd fall through to the `info` default and be invisible to error-signature scanning.
+const LAMBDA_CRASH_RE = /task timed out after|process exited before completing request|runtime exited with error|runtime\.(?:exiterror|outofmemory)|out of memory|signal:\s*killed/i;
+
 function fallbackLevel(raw: string): string {
 	if (/\b(?:ERROR|FATAL)\b/.test(raw)) return 'error';
+	if (LAMBDA_CRASH_RE.test(raw)) return 'error';
 	if (/\bWARN(?:ING)?\b/.test(raw)) return 'warn';
 	return 'info';
 }
@@ -328,6 +334,10 @@ function toVectorRecord(
 					if (typeof p.filePathWithLine === 'string') codeLoc = p.filePathWithLine;
 					else if (typeof p.fileName === 'string' && p.fileLine != null) codeLoc = `${p.fileName}:${p.fileLine}`;
 				}
+			} else if (typeof o.errorType === 'string' && typeof o.errorMessage === 'string') {
+				// Lambda's own invocation-error envelope (crash/timeout/OOM reported by the platform, not
+				// by app code) — no `_meta`, so it'd otherwise fall through to the `info` default.
+				level = 'error';
 			}
 			// Lift app-declared structured fields (correlationId, orderId, …) FIRST, so those keys can be
 			// kept OUT of the human message below (no duplicating a lifted id in both the field and the text).
