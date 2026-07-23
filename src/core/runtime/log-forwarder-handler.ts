@@ -300,6 +300,7 @@ function toVectorRecord(
 	let logger: string | undefined;
 	let requestId: string | undefined;
 	let correlationId: string | undefined;
+	let causedBy: string | undefined;
 	let tsIso: string | undefined;
 	let lifted: Record<string, string> | undefined;
 	let codeLoc: string | undefined;
@@ -318,7 +319,7 @@ function toVectorRecord(
 		try {
 			const o = JSON.parse(body) as Record<string, unknown>;
 			const meta = o._meta as {
-				name?: unknown; logLevelName?: unknown; date?: unknown; correlationId?: unknown;
+				name?: unknown; logLevelName?: unknown; date?: unknown; correlationId?: unknown; causedBy?: unknown;
 				path?: { filePathWithLine?: unknown; fileName?: unknown; fileLine?: unknown };
 			} | undefined;
 			if (meta && typeof meta === 'object') {
@@ -328,6 +329,7 @@ function toVectorRecord(
 					tsIso = new Date(meta.date).toISOString();
 				}
 				if (typeof meta.correlationId === 'string' && meta.correlationId.trim()) correlationId = meta.correlationId.trim();
+				if (typeof meta.causedBy === 'string' && meta.causedBy.trim()) causedBy = meta.causedBy.trim();
 				// tslog native source position (mode 'all'): _meta.path.
 				const p = meta.path;
 				if (p && typeof p === 'object') {
@@ -425,6 +427,7 @@ function toVectorRecord(
 		...(requestId ? { requestId } : {}),
 		...(lifted ?? {}),
 		...(correlationId ? { correlationId } : {}),
+		...(causedBy ? { causedBy } : {}),
 		...(codeFile ? { codeFile } : {}),
 		...(codeLine ? { codeLine } : {}),
 		level: resolvedLevel,

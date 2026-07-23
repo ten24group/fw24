@@ -185,6 +185,26 @@ describe('log-forwarder handler runtime', () => {
 		expect(recs[0].codeLine).toBe('12');
 	});
 
+	it('lifts _meta.causedBy alongside _meta.correlationId, both as top-level fields', async () => {
+		const line = JSON.stringify({
+			'0': 'downstream call failed',
+			_meta: { logLevelName: 'ERROR', correlationId: 'own-invocation-id', causedBy: 'upstream-caller-id' },
+		});
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].correlationId).toBe('own-invocation-id');
+		expect(recs[0].causedBy).toBe('upstream-caller-id');
+	});
+
+	it('omits causedBy when absent from _meta (no upstream caller)', async () => {
+		const line = JSON.stringify({
+			'0': 'root-level call',
+			_meta: { logLevelName: 'INFO', correlationId: 'own-id-only' },
+		});
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].correlationId).toBe('own-id-only');
+		expect(recs[0].causedBy).toBeUndefined();
+	});
+
 	it('drops logStream/logGroup by default (keeps host) to cut size', async () => {
 		const recs = await runHandler(['hello'], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
 		expect(recs[0].logGroup).toBeUndefined();

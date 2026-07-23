@@ -121,4 +121,30 @@ describe('logger stamps correlationId onto _meta (forwarder path)', () => {
         expect(meta).toBeDefined();
         expect(meta.correlationId).toBeUndefined();
     });
+
+    it('also includes causedBy in _meta, additively, alongside correlationId', () => {
+        const logger = createLogger({ name: 'corr-test-3', type: 'json' });
+        const ctx = createExecutionContext({ correlationId: 'own-id', causedBy: 'upstream-id' });
+        const meta = captureLoggedMeta(() => {
+            runWithExecutionContextSync(ctx, () => {
+                logger.info('hello with causedBy');
+            });
+        });
+        expect(meta).toBeDefined();
+        expect(meta.correlationId).toBe('own-id');
+        expect(meta.causedBy).toBe('upstream-id');
+    });
+
+    it('omits causedBy when the context has none (no upstream caller)', () => {
+        const logger = createLogger({ name: 'corr-test-4', type: 'json' });
+        const ctx = createExecutionContext({ correlationId: 'own-id-only' });
+        const meta = captureLoggedMeta(() => {
+            runWithExecutionContextSync(ctx, () => {
+                logger.info('hello with no upstream');
+            });
+        });
+        expect(meta).toBeDefined();
+        expect(meta.correlationId).toBe('own-id-only');
+        expect(meta.causedBy).toBeUndefined();
+    });
 });

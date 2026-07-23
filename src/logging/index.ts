@@ -173,10 +173,16 @@ function attachCorrelationIdToMeta(logger: Logger<ILogObj>): void {
         ...logger.settings.overwrite,
         addMeta: (logObj: ILogObj, logLevelId: number, logLevelName: string) => {
             const withMeta = baseAddMeta(logObj, logLevelId, logLevelName);
-            const correlationId = getCurrentExecutionContext()?.correlationId;
+            const execCtx = getCurrentExecutionContext();
             const meta = withMeta?.[ metaProperty ];
-            if (correlationId && meta && typeof meta === 'object') {
-                meta.correlationId = correlationId;
+            if (meta && typeof meta === 'object') {
+                if (execCtx?.correlationId) meta.correlationId = execCtx.correlationId;
+                // Additive only — does not change what correlationId itself means (still strictly
+                // per-invocation, see api-gateway-controller.ts). This just also exposes the upstream
+                // link on the log line, so a downstream aggregator (e.g. Logtrail's cross-service
+                // signature linking) can match a caller's own correlationId against a callee's causedBy
+                // without either side changing its existing per-invocation identity.
+                if (execCtx?.causedBy) meta.causedBy = execCtx.causedBy;
             }
             return withMeta;
         },
