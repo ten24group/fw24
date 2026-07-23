@@ -230,4 +230,32 @@ export declare abstract class APIController extends AbstractLambdaHandler {
      * Extract IAM context
      */
     protected extractIamContext(event: APIGatewayEvent, actor: Actor): void;
+    /**
+     * Fills in the calling end-user's identity from an optional, client-supplied
+     * `x-actor` header, for auth methods that never expose it server-side.
+     *
+     * SigV4-signed requests (e.g. via a Cognito Identity Pool) authenticate as an
+     * assumed IAM role — `extractIamContext` only ever sees that role's ARN, which is
+     * typically shared by every user of an app, not the real end-user. The client
+     * still holds the actual Cognito ID token (that's how it obtained AWS credentials
+     * in the first place), so it can send a small decoded summary of it here.
+     *
+     * SECURITY: this is NEVER server-verified — it's whatever JSON the caller sent, so
+     * it's only merged for the IAM/anonymous branches (never overrides a Cognito-JWT-
+     * authorizer-derived actor). It deliberately does NOT overwrite `actor.actorId`
+     * (which stays the auth-verified IAM ARN / 'anonymous' — the value
+     * `base-service.ts`'s `createdBy`/`updatedBy`/`deletedBy`/`tenantId` audit stamping
+     * trusts); instead it's exposed only under `actor.clientSuppliedActorId` /
+     * `actor.clientSuppliedActor = true`, which log stamping (`src/logging/index.ts`)
+     * prefers for observability. It must never be used for authorization decisions or
+     * persisted audit fields — observability only. (Before this existed, IAM/anonymous
+     * requests could already forge `actor.tenantId` via the pre-existing `x-tenant-id`
+     * header, for every auth method, Cognito included — that's a separate, pre-existing
+     * exposure this doesn't change either way.)
+     *
+     * Reads the raw event headers (case-insensitive key match) rather than
+     * `request.headers`, which lowercases header VALUES too — that would corrupt the
+     * JSON payload (mixed-case ids/emails) this header needs to carry intact.
+     */
+    protected mergeClientSuppliedActor(event: APIGatewayEvent, actor: Actor): void;
 }
