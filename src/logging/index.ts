@@ -183,6 +183,11 @@ function attachCorrelationIdToMeta(logger: Logger<ILogObj>): void {
                 // signature linking) can match a caller's own correlationId against a callee's causedBy
                 // without either side changing its existing per-invocation identity.
                 if (execCtx?.causedBy) meta.causedBy = execCtx.causedBy;
+                // Who made this request, not which request — same additive stamping, distinct concern
+                // from correlationId/causedBy. May be client-supplied/unverified (see
+                // Actor.clientSuppliedActor on api-gateway-controller.ts) — never rely on this for
+                // authorization, observability only.
+                if (execCtx?.actor?.actorId) meta.actorId = execCtx.actor.actorId;
             }
             return withMeta;
         },

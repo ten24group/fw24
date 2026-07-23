@@ -19,6 +19,7 @@ import {
   createExecutionContext,
   extractFromHeaders,
   runWithExecutionContext,
+  sanitizeTraceId,
 } from './execution-context';
 import { RequestContext } from "./request-context";
 import { ResponseConfig, mergeResponseConfig } from "./response-config";
@@ -849,15 +850,21 @@ export abstract class APIController extends AbstractLambdaHandler {
     else if (event.requestContext?.identity?.apiKey || request.headers?.[ 'x-api-key' ]) {
       this.extractApiKeyContext(event, request, actor);
     }
-    // IAM authentication 
+    // IAM authentication
     else if (event.requestContext?.identity?.userArn) {
       this.extractIamContext(event, actor);
+      // SigV4/IAM auth (e.g. Cognito Identity Pool federation) never carries the calling
+      // end-user's own identity server-side — only the assumed IAM role's ARN, typically
+      // shared across every user of an app. Fill that gap from an optional, unverified
+      // client-supplied header — see mergeClientSuppliedActor().
+      this.mergeClientSuppliedActor(event, actor);
     }
     // Anonymous
     else {
       actor.authMethod = 'anonymous';
       actor.actorType = 'anonymous';
       actor.actorId = 'anonymous';
+      this.mergeClientSuppliedActor(event, actor);
     }
 
     // Session and tenant context
@@ -956,9 +963,12 @@ export abstract class APIController extends AbstractLambdaHandler {
     // Session context
     actor.sessionId = request.headers?.[ 'x-session-id' ];
 
-    // Tenant context - check custom attributes first, then headers
+    // Tenant context - check custom attributes first, then headers, then whatever an
+    // earlier extraction step already set (e.g. mergeClientSuppliedActor) — never clobber
+    // a value with undefined just because neither of these two sources has one.
     actor.tenantId = request.headers?.[ 'x-tenant-id' ] ||
-      event.requestContext?.authorizer?.claims?.[ 'custom:tenantId' ];
+      event.requestContext?.authorizer?.claims?.[ 'custom:tenantId' ] ||
+      actor.tenantId;
   }
 
   /**
@@ -1002,5 +1012,50 @@ export abstract class APIController extends AbstractLambdaHandler {
       accountId: event.requestContext?.identity?.accountId || undefined,
       caller: event.requestContext?.identity?.caller || undefined,
     };
+  }
+
+  /**
+   * Fills in the calling end-user's identity from an optional, client-supplied
+   * `x-actor` header, for auth methods that never expose it server-side.
+   *
+   * SigV4-signed requests (e.g. via a Cognito Identity Pool) authenticate as an
+   * assumed IAM role — `extractIamContext` only ever sees that role's ARN, which is
+   * typically shared by every user of an app, not the real end-user. The client
+   * still holds the actual Cognito ID token (that's how it obtained AWS credentials
+   * in the first place), so it can send a small decoded summary of it here.
+   *
+   * SECURITY: this is NEVER server-verified — it's whatever JSON the caller sent, so
+   * it's only merged for the IAM/anonymous branches (never overrides a Cognito-JWT-
+   * authorizer-derived actor) and is flagged via `actor.clientSuppliedActor = true`.
+   * It must never be used for authorization decisions — observability only.
+   *
+   * Reads the raw event headers (case-insensitive key match) rather than
+   * `request.headers`, which lowercases header VALUES too — that would corrupt the
+   * JSON payload (mixed-case ids/emails) this header needs to carry intact.
+   */
+  protected mergeClientSuppliedActor(event: APIGatewayEvent, actor: Actor): void {
+    const rawHeaders = event.headers || {};
+    const headerKey = Object.keys(rawHeaders).find(key => key.toLowerCase() === 'x-actor');
+    const raw = headerKey ? rawHeaders[ headerKey ] : undefined;
+    if (typeof raw !== 'string' || !raw.trim()) return;
+
+    try {
+      const parsed = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+
+      // id (the Cognito `sub`) is the one required field — everything else is best-effort.
+      const id = sanitizeTraceId(typeof parsed.id === 'string' ? parsed.id : undefined);
+      if (!id) return;
+
+      actor.actorId = id;
+      actor.actorType = 'user';
+      actor.clientSuppliedActor = true;
+      if (typeof parsed.email === 'string' && parsed.email.trim()) actor.email = parsed.email.trim();
+      if (typeof parsed.username === 'string' && parsed.username.trim()) actor.name = parsed.username.trim();
+      if (typeof parsed.tenantId === 'string' && parsed.tenantId.trim()) actor.tenantId = parsed.tenantId.trim();
+      actor.cognito = { ...actor.cognito, sub: id };
+    } catch {
+      // malformed header — ignore, never throw from actor extraction
+    }
   }
 }

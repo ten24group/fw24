@@ -147,4 +147,32 @@ describe('logger stamps correlationId onto _meta (forwarder path)', () => {
         expect(meta.correlationId).toBe('own-id-only');
         expect(meta.causedBy).toBeUndefined();
     });
+
+    it('also includes actorId in _meta, additively, alongside correlationId', () => {
+        const logger = createLogger({ name: 'corr-test-5', type: 'json' });
+        const ctx = createExecutionContext({
+            correlationId: 'own-id-2',
+            actor: { requestId: 'req-1', timestamp: new Date().toISOString(), actorId: 'user-123' },
+        });
+        const meta = captureLoggedMeta(() => {
+            runWithExecutionContextSync(ctx, () => {
+                logger.info('hello with actor');
+            });
+        });
+        expect(meta).toBeDefined();
+        expect(meta.correlationId).toBe('own-id-2');
+        expect(meta.actorId).toBe('user-123');
+    });
+
+    it('omits actorId when the context has no actor', () => {
+        const logger = createLogger({ name: 'corr-test-6', type: 'json' });
+        const ctx = createExecutionContext({ correlationId: 'own-id-3' });
+        const meta = captureLoggedMeta(() => {
+            runWithExecutionContextSync(ctx, () => {
+                logger.info('hello with no actor');
+            });
+        });
+        expect(meta).toBeDefined();
+        expect(meta.actorId).toBeUndefined();
+    });
 });

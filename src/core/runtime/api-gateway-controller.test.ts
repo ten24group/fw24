@@ -739,6 +739,105 @@ describe('APIGatewayController Core Functionality', () => {
       });
     });
 
+    it('should merge a client-supplied x-actor header for IAM (SigV4) authorization', () => {
+      const event = createMockEventForActorTests({
+        headers: {
+          'x-actor': JSON.stringify({ id: 'cognito-sub-123', email: 'Jane@Example.com', username: 'JaneD', tenantId: 'tenant-1' }),
+        },
+        requestContext: {
+          identity: {
+            sourceIp: '172.16.0.1',
+            userArn: 'arn:aws:iam::123456789012:role/authenticated-role',
+            user: 'AIDAI23HZ27SI6FQMGNQ2',
+          }
+        } as any
+      });
+
+      const request = createMockRequest({ requestId: 'req-sigv4-actor' });
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'iam',
+        actorId: 'cognito-sub-123',
+        actorType: 'user',
+        clientSuppliedActor: true,
+        email: 'Jane@Example.com',
+        name: 'JaneD',
+        tenantId: 'tenant-1',
+        cognito: { sub: 'cognito-sub-123' },
+      });
+      // The IAM ARN is still recorded — the client-supplied actor only fills the
+      // "who", it doesn't erase the underlying auth mechanism's own context.
+      expect(actor.iam?.userArn).toBe('arn:aws:iam::123456789012:role/authenticated-role');
+    });
+
+    it('should merge a client-supplied x-actor header for anonymous requests', () => {
+      const event = createMockEventForActorTests({
+        headers: { 'x-actor': JSON.stringify({ id: 'sub-abc' }) },
+        requestContext: { identity: { sourceIp: '203.0.113.1' } } as any
+      });
+
+      const request = createMockRequest({ requestId: 'req-anon-actor' });
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'anonymous',
+        actorId: 'sub-abc',
+        actorType: 'user',
+        clientSuppliedActor: true,
+      });
+    });
+
+    it('should ignore a malformed x-actor header without throwing', () => {
+      const event = createMockEventForActorTests({
+        headers: { 'x-actor': '{not valid json' },
+        requestContext: { identity: { sourceIp: '203.0.113.1' } } as any
+      });
+
+      const request = createMockRequest({ requestId: 'req-bad-actor-header' });
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor).toMatchObject({
+        authMethod: 'anonymous',
+        actorId: 'anonymous',
+      });
+      expect(actor.clientSuppliedActor).toBeUndefined();
+    });
+
+    it('should ignore an x-actor header missing the required id field', () => {
+      const event = createMockEventForActorTests({
+        headers: { 'x-actor': JSON.stringify({ email: 'no-id@example.com' }) },
+        requestContext: { identity: { sourceIp: '203.0.113.1' } } as any
+      });
+
+      const request = createMockRequest({ requestId: 'req-no-id-actor' });
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.actorId).toBe('anonymous');
+      expect(actor.clientSuppliedActor).toBeUndefined();
+    });
+
+    it('should never let a client-supplied x-actor header override a verified Cognito actor', () => {
+      const event = createMockEventForActorTests({
+        headers: { 'x-actor': JSON.stringify({ id: 'spoofed-id' }) },
+        requestContext: {
+          authorizer: {
+            claims: {
+              sub: 'real-cognito-sub',
+              'cognito:username': 'real_user',
+            }
+          }
+        } as any
+      });
+
+      const request = createMockRequest({ requestId: 'req-cognito-not-spoofed' });
+      const actor = (controller as any).extractActorContext(event, request);
+
+      expect(actor.authMethod).toBe('cognito');
+      expect(actor.actorId).toBe('real_user');
+      expect(actor.clientSuppliedActor).toBeUndefined();
+    });
+
     it('should handle malformed claims gracefully', () => {
       const event = createMockEventForActorTests({
         requestContext: {

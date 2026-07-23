@@ -40,6 +40,16 @@ export interface Actor {
   actorType?: 'user' | 'service' | 'anonymous';
   authMethod?: 'cognito' | 'iam' | 'api-key' | 'anonymous' | 'system';
 
+  /**
+   * True when actorId/email/etc. came from a client-supplied `x-actor` header rather
+   * than a server-verified source (Cognito JWT claims, IAM, API key). Set only for
+   * SigV4/IAM-authenticated or anonymous requests, to fill the gap where AWS identity
+   * federation (e.g. Cognito Identity Pool) never exposes the calling end-user's own
+   * identity server-side. NEVER use a client-supplied actor for authorization —
+   * observability only (logs, error monitoring).
+   */
+  clientSuppliedActor?: boolean;
+
   // Request context
   requestId: string;
   timestamp: string;
