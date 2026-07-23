@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.56](https://github.com/ten24group/fw24/compare/v1.1.0-beta.55...v1.1.0-beta.56) (2026-07-23)
+
+
+### Features
+
+* **logging:** capture actor identity (who), not just correlationId (which request) ([01c87d5](https://github.com/ten24group/fw24/commit/01c87d5c0426041f4d8c29c20cbbb2074b2c11c8))
+* **logging:** stamp causedBy onto log lines alongside correlationId ([7f25c1d](https://github.com/ten24group/fw24/commit/7f25c1dbfaa622149cef21a5fab3a49ea870e653))
+
+
+### Bug Fixes
+
+* **security:** stop client-supplied x-actor from forging audit provenance ([0d15dc8](https://github.com/ten24group/fw24/commit/0d15dc8bed3cd164991a354d7ef73578e18d9405))
+
 ## [1.1.0-beta.55](https://github.com/ten24group/fw24/compare/v1.1.0-beta.53...v1.1.0-beta.55) (2026-07-22)
 
 
