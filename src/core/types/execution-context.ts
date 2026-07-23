@@ -41,14 +41,25 @@ export interface Actor {
   authMethod?: 'cognito' | 'iam' | 'api-key' | 'anonymous' | 'system';
 
   /**
-   * True when actorId/email/etc. came from a client-supplied `x-actor` header rather
-   * than a server-verified source (Cognito JWT claims, IAM, API key). Set only for
-   * SigV4/IAM-authenticated or anonymous requests, to fill the gap where AWS identity
-   * federation (e.g. Cognito Identity Pool) never exposes the calling end-user's own
-   * identity server-side. NEVER use a client-supplied actor for authorization —
-   * observability only (logs, error monitoring).
+   * True when `clientSuppliedActorId`/email/etc. came from a client-supplied `x-actor`
+   * header rather than a server-verified source (Cognito JWT claims, IAM, API key). Set
+   * only for SigV4/IAM-authenticated or anonymous requests, to fill the gap where AWS
+   * identity federation (e.g. Cognito Identity Pool) never exposes the calling
+   * end-user's own identity server-side.
    */
   clientSuppliedActor?: boolean;
+
+  /**
+   * The end-user id claimed by an unverified `x-actor` header (see `clientSuppliedActor`).
+   * Deliberately a SEPARATE field from `actorId` — `actorId` stays whatever the
+   * auth-verified source produced (the IAM role's ARN, or `'anonymous'`), which is what
+   * `base-service.ts`'s `createdBy`/`updatedBy`/`deletedBy` audit stamping and any other
+   * authorization-adjacent code trusts. `clientSuppliedActorId` is observability-only
+   * (log stamping prefers it over `actorId` when present, since it's the more useful
+   * "who" for triage) and must NEVER be used for authorization decisions or persisted
+   * audit trails — a client can put anything here.
+   */
+  clientSuppliedActorId?: string;
 
   // Request context
   requestId: string;

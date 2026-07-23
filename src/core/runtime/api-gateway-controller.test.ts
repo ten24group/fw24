@@ -758,9 +758,12 @@ describe('APIGatewayController Core Functionality', () => {
 
       expect(actor).toMatchObject({
         authMethod: 'iam',
-        actorId: 'cognito-sub-123',
+        // actorId stays the auth-verified IAM identity — the client-supplied claim is NEVER
+        // allowed to overwrite the field that createdBy/updatedBy/deletedBy audit stamping trusts.
+        actorId: 'AIDAI23HZ27SI6FQMGNQ2',
         actorType: 'user',
         clientSuppliedActor: true,
+        clientSuppliedActorId: 'cognito-sub-123',
         email: 'Jane@Example.com',
         name: 'JaneD',
         tenantId: 'tenant-1',
@@ -782,9 +785,11 @@ describe('APIGatewayController Core Functionality', () => {
 
       expect(actor).toMatchObject({
         authMethod: 'anonymous',
-        actorId: 'sub-abc',
+        // actorId stays 'anonymous' — see the IAM test above for why this is never overwritten.
+        actorId: 'anonymous',
         actorType: 'user',
         clientSuppliedActor: true,
+        clientSuppliedActorId: 'sub-abc',
       });
     });
 
@@ -802,6 +807,7 @@ describe('APIGatewayController Core Functionality', () => {
         actorId: 'anonymous',
       });
       expect(actor.clientSuppliedActor).toBeUndefined();
+      expect(actor.clientSuppliedActorId).toBeUndefined();
     });
 
     it('should ignore an x-actor header missing the required id field', () => {
@@ -815,6 +821,7 @@ describe('APIGatewayController Core Functionality', () => {
 
       expect(actor.actorId).toBe('anonymous');
       expect(actor.clientSuppliedActor).toBeUndefined();
+      expect(actor.clientSuppliedActorId).toBeUndefined();
     });
 
     it('should never let a client-supplied x-actor header override a verified Cognito actor', () => {
@@ -836,6 +843,7 @@ describe('APIGatewayController Core Functionality', () => {
       expect(actor.authMethod).toBe('cognito');
       expect(actor.actorId).toBe('real_user');
       expect(actor.clientSuppliedActor).toBeUndefined();
+      expect(actor.clientSuppliedActorId).toBeUndefined();
     });
 
     it('should handle malformed claims gracefully', () => {

@@ -184,10 +184,13 @@ function attachCorrelationIdToMeta(logger: Logger<ILogObj>): void {
                 // without either side changing its existing per-invocation identity.
                 if (execCtx?.causedBy) meta.causedBy = execCtx.causedBy;
                 // Who made this request, not which request — same additive stamping, distinct concern
-                // from correlationId/causedBy. May be client-supplied/unverified (see
-                // Actor.clientSuppliedActor on api-gateway-controller.ts) — never rely on this for
-                // authorization, observability only.
-                if (execCtx?.actor?.actorId) meta.actorId = execCtx.actor.actorId;
+                // from correlationId/causedBy. Prefers the unverified client-supplied id (see
+                // Actor.clientSuppliedActorId on api-gateway-controller.ts) when present — it's the
+                // more useful "who" for triage on SigV4/anonymous routes — else falls back to the
+                // auth-verified actorId (IAM ARN / 'anonymous'). Observability only either way, never
+                // for authorization — that distinction lives on the Actor object itself, not here.
+                const stampedActorId = execCtx?.actor?.clientSuppliedActorId || execCtx?.actor?.actorId;
+                if (stampedActorId) meta.actorId = stampedActorId;
             }
             return withMeta;
         },

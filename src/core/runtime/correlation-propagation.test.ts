@@ -175,4 +175,27 @@ describe('logger stamps correlationId onto _meta (forwarder path)', () => {
         expect(meta).toBeDefined();
         expect(meta.actorId).toBeUndefined();
     });
+
+    it('stamps the unverified clientSuppliedActorId instead of actorId when both are present', () => {
+        const logger = createLogger({ name: 'corr-test-7', type: 'json' });
+        const ctx = createExecutionContext({
+            correlationId: 'own-id-4',
+            actor: {
+                requestId: 'req-2',
+                timestamp: new Date().toISOString(),
+                actorId: 'arn:aws:iam::123456789012:role/authenticated-role',
+                clientSuppliedActorId: 'real-end-user-id',
+                clientSuppliedActor: true,
+            },
+        });
+        const meta = captureLoggedMeta(() => {
+            runWithExecutionContextSync(ctx, () => {
+                logger.info('hello with client-supplied actor');
+            });
+        });
+        expect(meta).toBeDefined();
+        // The claimed identity is more useful for triage than the shared IAM role ARN — but this is
+        // observability only; base-service.ts's audit stamping never sees clientSuppliedActorId.
+        expect(meta.actorId).toBe('real-end-user-id');
+    });
 });

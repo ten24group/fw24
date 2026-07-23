@@ -1026,8 +1026,16 @@ export abstract class APIController extends AbstractLambdaHandler {
    *
    * SECURITY: this is NEVER server-verified — it's whatever JSON the caller sent, so
    * it's only merged for the IAM/anonymous branches (never overrides a Cognito-JWT-
-   * authorizer-derived actor) and is flagged via `actor.clientSuppliedActor = true`.
-   * It must never be used for authorization decisions — observability only.
+   * authorizer-derived actor). It deliberately does NOT overwrite `actor.actorId`
+   * (which stays the auth-verified IAM ARN / 'anonymous' — the value
+   * `base-service.ts`'s `createdBy`/`updatedBy`/`deletedBy`/`tenantId` audit stamping
+   * trusts); instead it's exposed only under `actor.clientSuppliedActorId` /
+   * `actor.clientSuppliedActor = true`, which log stamping (`src/logging/index.ts`)
+   * prefers for observability. It must never be used for authorization decisions or
+   * persisted audit fields — observability only. (Before this existed, IAM/anonymous
+   * requests could already forge `actor.tenantId` via the pre-existing `x-tenant-id`
+   * header, for every auth method, Cognito included — that's a separate, pre-existing
+   * exposure this doesn't change either way.)
    *
    * Reads the raw event headers (case-insensitive key match) rather than
    * `request.headers`, which lowercases header VALUES too — that would corrupt the
@@ -1047,9 +1055,11 @@ export abstract class APIController extends AbstractLambdaHandler {
       const id = sanitizeTraceId(typeof parsed.id === 'string' ? parsed.id : undefined);
       if (!id) return;
 
-      actor.actorId = id;
-      actor.actorType = 'user';
+      actor.clientSuppliedActorId = id;
       actor.clientSuppliedActor = true;
+      // Purely descriptive/observability metadata (like email/username below) — never consumed
+      // for authorization or audit-trail trust decisions, so safe to set from client input.
+      actor.actorType = 'user';
       if (typeof parsed.email === 'string' && parsed.email.trim()) actor.email = parsed.email.trim();
       if (typeof parsed.username === 'string' && parsed.username.trim()) actor.name = parsed.username.trim();
       if (typeof parsed.tenantId === 'string' && parsed.tenantId.trim()) actor.tenantId = parsed.tenantId.trim();
