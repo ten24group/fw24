@@ -35,6 +35,30 @@ const W3C_PARENT_ID_LENGTH = 16;
 const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 
 /**
+ * Literal "empty value" tokens that are valid per {@link SAFE_TRACE_ID_RE} (they're
+ * alphanumeric) but are never legitimate ids — they're what you get when an unset
+ * JS value is stringified via a template literal (`` `${x.correlationId}` ``) or
+ * `String(x)` instead of being guarded. Rejected case-insensitively as a
+ * defense-in-depth backstop: the real fix is at the producer that stringified an
+ * absent value in the first place, but this stops the bad token from silently
+ * propagating (and being mistaken for a real trace) if a similar mistake happens
+ * again anywhere upstream.
+ */
+const LITERAL_EMPTY_VALUE_TOKENS = new Set([ 'undefined', 'null', 'nan' ]);
+
+/**
+ * True if `trimmedValue` is one of the literal "empty value" tokens (see
+ * {@link LITERAL_EMPTY_VALUE_TOKENS}). Exported so every extraction boundary —
+ * not just the charset-guarded ones behind {@link sanitizeTraceId} — can reject
+ * these tokens, since a producer stringifying an unset id can hit EventBridge
+ * `detail`, Step Functions input, or Kinesis payloads just as easily as an HTTP
+ * header or SQS/SNS attribute.
+ */
+export function isLiteralEmptyValueToken(trimmedValue: string): boolean {
+  return LITERAL_EMPTY_VALUE_TOKENS.has(trimmedValue.toLowerCase());
+}
+
+/**
  * Return `value` only if it is a safe trace/correlation id (see
  * {@link SAFE_TRACE_ID_RE}); otherwise `undefined`. Trims first; treats blank as
  * absent. Use at every UNTRUSTED extraction boundary so nothing charset-unsafe
@@ -43,7 +67,9 @@ const SAFE_TRACE_ID_RE = /^[A-Za-z0-9._-]{1,128}$/;
 export function sanitizeTraceId(value: string | undefined | null): string | undefined {
   if (typeof value !== 'string') return undefined;
   const trimmed = value.trim();
-  return SAFE_TRACE_ID_RE.test(trimmed) ? trimmed : undefined;
+  if (!SAFE_TRACE_ID_RE.test(trimmed)) return undefined;
+  if (isLiteralEmptyValueToken(trimmed)) return undefined;
+  return trimmed;
 }
 
 // ============================================================================
@@ -228,22 +254,24 @@ export function extractFromEventBridge(
 
   // Direct fields
   const correlationId = detail[ 'correlationId' ] || detail[ 'traceId' ];
-  if (typeof correlationId === 'string' && correlationId.trim()) {
+  if (typeof correlationId === 'string' && correlationId.trim() && !isLiteralEmptyValueToken(correlationId.trim())) {
     const causedBy = detail[ 'causedBy' ];
     const sampled = detail[ 'sampled' ];
+    const trimmedCausedBy = typeof causedBy === 'string' ? causedBy.trim() : undefined;
     return {
       correlationId: correlationId.trim(),
-      causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
+      causedBy: trimmedCausedBy && !isLiteralEmptyValueToken(trimmedCausedBy) ? trimmedCausedBy : undefined,
       sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
     };
   }
 
   // Nested traceContext object
   const traceContext = detail[ 'traceContext' ] as Record<string, unknown> | undefined;
-  if (traceContext && typeof traceContext.correlationId === 'string') {
+  if (traceContext && typeof traceContext.correlationId === 'string' && traceContext.correlationId.trim() && !isLiteralEmptyValueToken(traceContext.correlationId.trim())) {
+    const trimmedCausedBy = typeof traceContext.causedBy === 'string' ? (traceContext.causedBy as string).trim() : undefined;
     return {
       correlationId: (traceContext.correlationId as string).trim(),
-      causedBy: typeof traceContext.causedBy === 'string' ? (traceContext.causedBy as string).trim() : undefined,
+      causedBy: trimmedCausedBy && !isLiteralEmptyValueToken(trimmedCausedBy) ? trimmedCausedBy : undefined,
       sampled: typeof traceContext.sampled === 'boolean'
         ? traceContext.sampled
         : traceContext.sampled === 'true',
@@ -263,7 +291,7 @@ export function extractFromStepFunctions(
 
   // Direct fields
   const correlationId = input[ 'correlationId' ] || input[ 'traceId' ];
-  if (typeof correlationId === 'string' && correlationId.trim()) {
+  if (typeof correlationId === 'string' && correlationId.trim() && !isLiteralEmptyValueToken(correlationId.trim())) {
     const sampled = input[ 'sampled' ];
     return {
       correlationId: correlationId.trim(),
@@ -273,7 +301,7 @@ export function extractFromStepFunctions(
 
   // Nested traceContext
   const traceContext = input[ 'traceContext' ] as Record<string, unknown> | undefined;
-  if (traceContext && typeof traceContext.correlationId === 'string') {
+  if (traceContext && typeof traceContext.correlationId === 'string' && traceContext.correlationId.trim() && !isLiteralEmptyValueToken(traceContext.correlationId.trim())) {
     return {
       correlationId: (traceContext.correlationId as string).trim(),
       sampled: typeof traceContext.sampled === 'boolean'
@@ -304,12 +332,13 @@ export function extractFromKinesis(
     const decoded = Buffer.from(record.kinesis.data, 'base64').toString('utf-8');
     const data = JSON.parse(decoded) as Record<string, unknown>;
     const correlationId = data[ 'correlationId' ] || data[ 'traceId' ];
-    if (typeof correlationId === 'string' && correlationId.trim()) {
+    if (typeof correlationId === 'string' && correlationId.trim() && !isLiteralEmptyValueToken(correlationId.trim())) {
       const causedBy = data[ 'causedBy' ];
       const sampled = data[ 'sampled' ];
+      const trimmedCausedBy = typeof causedBy === 'string' ? causedBy.trim() : undefined;
       return {
         correlationId: correlationId.trim(),
-        causedBy: typeof causedBy === 'string' ? causedBy.trim() : undefined,
+        causedBy: trimmedCausedBy && !isLiteralEmptyValueToken(trimmedCausedBy) ? trimmedCausedBy : undefined,
         sampled: typeof sampled === 'boolean' ? sampled : sampled === 'true',
       };
     }
@@ -318,7 +347,7 @@ export function extractFromKinesis(
   }
 
   // Fall back to partition key
-  if (record.kinesis.partitionKey) {
+  if (record.kinesis.partitionKey && !isLiteralEmptyValueToken(record.kinesis.partitionKey.trim())) {
     return { correlationId: record.kinesis.partitionKey };
   }
 
