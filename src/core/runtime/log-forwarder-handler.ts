@@ -222,6 +222,22 @@ function fallbackLevel(raw: string): string {
 const KNOWN_LEVELS = new Set([ 'trace', 'debug', 'info', 'warn', 'warning', 'error', 'fatal' ]);
 const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/;
 
+// Literal "empty value" tokens — never a legitimate id, but easy to end up with one anyway. The
+// concrete case this guards: AWS Lambda's Node.js runtime has no request id yet during the INIT
+// phase (module load / DI container construction, before the first invocation), so a line logged
+// then still gets the usual `‹iso›\t‹requestId›\t‹LEVEL›\t‹message›` shape, but with the runtime's
+// own still-unset id stringified to the literal text "undefined" — an AWS platform quirk, not an
+// app bug. Left unguarded, this forwarder would faithfully lift that text as a real `requestId`,
+// and Logtrail's Recent Traces would show a bogus trace with every INIT-phase log line from every
+// Lambda in the app grouped under the fake id "undefined". Same idea as fw24's
+// `sanitizeTraceId`/`isLiteralEmptyValueToken` (execution-context/propagation.ts) — kept as its own
+// tiny local copy here rather than an import, since this forwarder is deliberately
+// dependency-free (see file header) and never pulls in the rest of the execution-context module graph.
+const LITERAL_EMPTY_ID_TOKENS = new Set([ 'undefined', 'null', 'nan' ]);
+function isLiteralEmptyIdToken(v: string): boolean {
+	return LITERAL_EMPTY_ID_TOKENS.has(v.trim().toLowerCase());
+}
+
 // tslog's "pretty" (non-JSON) console format: `YYYY-MM-DD HH:MM:SS.mmm LEVEL rest…`. The date + level
 // it prints duplicate what Logtrail already shows in the dedicated TIME/LVL columns — peel them off
 // the message like the Lambda-prefix / tslog-JSON branches already do for their own shapes.
@@ -246,7 +262,13 @@ function parseLambdaPrefix(raw: string): { requestId: string; level: string; mes
 	if (parts.length < 4) return null;
 	const [ ts, requestId, lvl, ...rest ] = parts;
 	if (!ISO_RE.test(ts) || !KNOWN_LEVELS.has(lvl.trim().toLowerCase())) return null;
-	return { requestId, level: lvl.trim().toLowerCase(), message: rest.join('\t').trim() };
+	// INIT-phase lines carry the literal text "undefined" here (see LITERAL_EMPTY_ID_TOKENS) — treat
+	// that as "no request id" rather than a real one, same as if the prefix had no id at all.
+	return {
+		requestId: isLiteralEmptyIdToken(requestId) ? '' : requestId,
+		level: lvl.trim().toLowerCase(),
+		message: rest.join('\t').trim(),
+	};
 }
 
 /**
@@ -329,9 +351,14 @@ function toVectorRecord(
 				if (typeof meta.date === 'string' && !Number.isNaN(Date.parse(meta.date))) {
 					tsIso = new Date(meta.date).toISOString();
 				}
-				if (typeof meta.correlationId === 'string' && meta.correlationId.trim()) correlationId = meta.correlationId.trim();
-				if (typeof meta.causedBy === 'string' && meta.causedBy.trim()) causedBy = meta.causedBy.trim();
-				if (typeof meta.actorId === 'string' && meta.actorId.trim()) actorId = meta.actorId.trim();
+				// Reject the same literal empty-value tokens as the Lambda-prefix requestId above — a
+				// producer upstream stringifying an unset id (`` `${x.correlationId}` `` / `String(x)`)
+				// is just as capable of poisoning these fw24-emitted `_meta` fields as it is an
+				// AWS-emitted request id, and this forwarder is the single place shipping ALL of them
+				// into Logtrail's queryable fields, so it's the natural backstop.
+				if (typeof meta.correlationId === 'string' && meta.correlationId.trim() && !isLiteralEmptyIdToken(meta.correlationId)) correlationId = meta.correlationId.trim();
+				if (typeof meta.causedBy === 'string' && meta.causedBy.trim() && !isLiteralEmptyIdToken(meta.causedBy)) causedBy = meta.causedBy.trim();
+				if (typeof meta.actorId === 'string' && meta.actorId.trim() && !isLiteralEmptyIdToken(meta.actorId)) actorId = meta.actorId.trim();
 				// tslog native source position (mode 'all'): _meta.path.
 				const p = meta.path;
 				if (p && typeof p === 'object') {

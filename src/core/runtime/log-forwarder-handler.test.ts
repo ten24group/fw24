@@ -276,4 +276,39 @@ describe('log-forwarder handler runtime', () => {
 		const recs = await runHandler(['404 not found for /widgets/123'], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
 		expect(recs[0].message).toBe('404 not found for /widgets/123');
 	});
+
+	// Root cause (found via live Loki data): AWS Lambda's Node.js runtime has no request id yet
+	// during the INIT phase (module load / DI container construction, before the first invocation),
+	// so a line logged then still gets the usual `‹iso›\t‹requestId›\t‹LEVEL›\t‹message›` shape, but
+	// with the still-unset id stringified to the literal text "undefined" by the runtime itself.
+	// Confirmed in production: multiple Lambdas across a consuming service log at cold start
+	// (before their first real invocation), every one carrying `undefined` as its requestId —
+	// which Logtrail's Recent Traces then grouped into one bogus cross-service "trace" literally
+	// named "undefined".
+	it('treats a Lambda-prefix requestId of literal "undefined" as absent (AWS INIT-phase quirk)', async () => {
+		const line = '2026-07-19T22:28:04.552Z\tundefined\tINFO\tService registry initialized';
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].requestId).toBeUndefined();
+		expect(recs[0].message).toBe('Service registry initialized');
+	});
+
+	it('still lifts a real Lambda-prefix requestId normally', async () => {
+		const line = '2026-07-19T22:28:04.552Z\treq-abc-123\tINFO\thello';
+		const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+		expect(recs[0].requestId).toBe('req-abc-123');
+	});
+
+	it.each([ 'undefined', 'Undefined', 'null', 'NaN' ])(
+		'rejects a literal "%s" token from _meta.correlationId/causedBy/actorId the same way',
+		async (token) => {
+			const line = JSON.stringify({
+				'0': 'poisoned meta',
+				_meta: { logLevelName: 'INFO', correlationId: token, causedBy: token, actorId: token },
+			});
+			const recs = await runHandler([line], { FORWARDER_SERVICE: 'svc', FORWARDER_ENV: 'test' });
+			expect(recs[0].correlationId).toBeUndefined();
+			expect(recs[0].causedBy).toBeUndefined();
+			expect(recs[0].actorId).toBeUndefined();
+		},
+	);
 });

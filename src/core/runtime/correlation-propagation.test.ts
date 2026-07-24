@@ -2,6 +2,9 @@ import {
     sanitizeTraceId,
     extractFromHeaders,
     extractFromSqs,
+    extractFromEventBridge,
+    extractFromStepFunctions,
+    extractFromKinesis,
     createHttpHeaders,
     createExecutionContext,
     runWithExecutionContextSync,
@@ -34,6 +37,29 @@ describe('sanitizeTraceId', () => {
         expect(sanitizeTraceId(undefined)).toBeUndefined();
         expect(sanitizeTraceId(null)).toBeUndefined();
     });
+
+    // Regression: a producer somewhere upstream can stringify an unset value via a
+    // template literal (`${x.correlationId}`) or `String(x)`, yielding the literal
+    // text "undefined" (or "null"/"NaN"). That text is alphanumeric, so it passed the
+    // charset regex and propagated as if it were a real id — this is what showed up as
+    // a bogus 9-character "undefined" trace in Logtrail's Recent Traces list. Reject it
+    // as a defense-in-depth backstop, case-insensitively, whatever the real fix at the
+    // producer turns out to be.
+    it('rejects the literal empty-value tokens "undefined"/"null"/"nan" (any case)', () => {
+        expect(sanitizeTraceId('undefined')).toBeUndefined();
+        expect(sanitizeTraceId('Undefined')).toBeUndefined();
+        expect(sanitizeTraceId('UNDEFINED')).toBeUndefined();
+        expect(sanitizeTraceId('null')).toBeUndefined();
+        expect(sanitizeTraceId('NULL')).toBeUndefined();
+        expect(sanitizeTraceId('nan')).toBeUndefined();
+        expect(sanitizeTraceId('NaN')).toBeUndefined();
+        expect(sanitizeTraceId('  undefined  ')).toBeUndefined();
+    });
+
+    it('does not reject ids that merely contain these tokens as a substring', () => {
+        expect(sanitizeTraceId('undefined-1234')).toBe('undefined-1234');
+        expect(sanitizeTraceId('req_null_terminated')).toBe('req_null_terminated');
+    });
 });
 
 describe('extractFromHeaders: inbound sanitization (P0)', () => {
@@ -54,6 +80,10 @@ describe('extractFromHeaders: inbound sanitization (P0)', () => {
             causedBy: undefined,
         });
     });
+
+    it('drops a literal "undefined" x-correlation-id (a stringified unset value upstream)', () => {
+        expect(extractFromHeaders({ 'x-correlation-id': 'undefined' })).toBeUndefined();
+    });
 });
 
 describe('extractFromSqs: inbound sanitization', () => {
@@ -67,6 +97,37 @@ describe('extractFromSqs: inbound sanitization', () => {
         expect(
             extractFromSqs({ correlationId: { stringValue: 'msg-123' } })
         ).toEqual({ correlationId: 'msg-123', causedBy: undefined, sampled: false });
+    });
+
+    it('drops a literal "undefined" correlationId attribute (a stringified unset value upstream)', () => {
+        expect(
+            extractFromSqs({ correlationId: { stringValue: 'undefined' } })
+        ).toBeUndefined();
+    });
+});
+
+describe('extractFromEventBridge / extractFromStepFunctions / extractFromKinesis: literal-token rejection', () => {
+    it('EventBridge: drops a literal "undefined" correlationId in detail', () => {
+        expect(extractFromEventBridge({ detail: { correlationId: 'undefined' } })).toBeUndefined();
+    });
+
+    it('EventBridge: drops a literal "undefined" nested traceContext.correlationId', () => {
+        expect(extractFromEventBridge({ detail: { traceContext: { correlationId: 'undefined' } } })).toBeUndefined();
+    });
+
+    it('StepFunctions: drops a literal "null" correlationId', () => {
+        expect(extractFromStepFunctions({ correlationId: 'null' })).toBeUndefined();
+    });
+
+    it('Kinesis: drops a literal "undefined" correlationId embedded in the record data', () => {
+        const data = { correlationId: 'undefined' };
+        const encoded = Buffer.from(JSON.stringify(data), 'utf-8').toString('base64');
+        expect(extractFromKinesis({ kinesis: { data: encoded, partitionKey: 'undefined' } })).toBeUndefined();
+    });
+
+    it('Kinesis: drops a literal "undefined" partitionKey fallback when there is no JSON data match', () => {
+        const encoded = Buffer.from(JSON.stringify({ unrelated: true }), 'utf-8').toString('base64');
+        expect(extractFromKinesis({ kinesis: { data: encoded, partitionKey: 'undefined' } })).toBeUndefined();
     });
 });
 
