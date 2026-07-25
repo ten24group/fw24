@@ -6,6 +6,15 @@
  */
 import { ExecutionContextData, ParsedTraceContext } from './types';
 /**
+ * True if `trimmedValue` is one of the literal "empty value" tokens (see
+ * {@link LITERAL_EMPTY_VALUE_TOKENS}). Exported so every extraction boundary —
+ * not just the charset-guarded ones behind {@link sanitizeTraceId} — can reject
+ * these tokens, since a producer stringifying an unset id can hit EventBridge
+ * `detail`, Step Functions input, or Kinesis payloads just as easily as an HTTP
+ * header or SQS/SNS attribute.
+ */
+export declare function isLiteralEmptyValueToken(trimmedValue: string): boolean;
+/**
  * Return `value` only if it is a safe trace/correlation id (see
  * {@link SAFE_TRACE_ID_RE}); otherwise `undefined`. Trims first; treats blank as
  * absent. Use at every UNTRUSTED extraction boundary so nothing charset-unsafe
