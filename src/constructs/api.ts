@@ -14,7 +14,6 @@ import {
     Resource,
     ResponseType,
     RestApi,
-    Stage,
     ApiKey,
     Period,
     UsagePlan
@@ -31,11 +30,6 @@ import type { IFw24Module } from "../core/";
 import type HandlerDescriptor from "../interfaces/handler-descriptor";
 
 import { NodejsFunction, NodejsFunctionProps } from "aws-cdk-lib/aws-lambda-nodejs";
-import {
-    createCloudFormationNestedRootLookup,
-    NestedRootCloudFormationLookup,
-    resolveDeployedNestedRootOwners,
-} from "./nested-controller-root-lookup";
 import { Fw24 } from "../core/fw24";
 import { Helper } from "../core/helper";
 import { FW24Construct, FW24ConstructOutput, OutputType } from "../interfaces/construct";
@@ -143,38 +137,6 @@ export interface IAPIConstructConfig extends IConstructConfig {
     controllerParentStackName?: string;
 
     /**
-     * Ownership strategy for shared nested-controller root segments (the first path part of a
-     * nested route, e.g. `internal` in `internal/notifications`). In every strategy the owner is
-     * decided up front — never by controller registration order — so the shared resource's
-     * CloudFormation logical id is stable and the historical 409/ordering bug cannot occur. No
-     * hardcoded segment names in any strategy.
-     *
-     * - `'main-stack'` (default): the main RestApi stack owns every shared root. Zero config, fully
-     *   deterministic (no AWS calls) — new apps need nothing. An app already deployed with the root
-     *   in a nested stack moves it once per environment via `cdk refactor`.
-     * - `'pinned'`: a shared root stays in the controller stack that already owns it — you supply
-     *   `nestedControllerRootOwners`. Deterministic and offline; moves no live resource. Roots not
-     *   listed fall back to the main stack.
-     * - `'auto'`: at build time it looks up deployed CloudFormation to discover which controller
-     *   stack currently owns each root (matched by route, not logical id), and keeps it there. No
-     *   config and moves no live resource — but the build needs AWS credentials (present in CI/CD
-     *   deploy). It fails loud if it cannot resolve an owner (rather than guessing); set a
-     *   `nestedControllerRootOwners` entry as an explicit fallback for those cases.
-     *
-     * @default 'main-stack'
-     */
-    nestedControllerRootStrategy?: 'main-stack' | 'pinned' | 'auto';
-
-    /**
-     * The controller stack that already owns a shared root in the deployed app, e.g.
-     * `{ internal: 'internal/team' }`. Required with `'pinned'`; optional with `'auto'` as an
-     * explicit fallback when the lookup can't resolve (no creds / ambiguous / unmatched). The named
-     * stack keeps creating the root resource (preserving its existing CloudFormation logical id) and
-     * every sibling references it — so upgrading moves nothing and stays zero-downtime.
-     */
-    nestedControllerRootOwners?: Record<string, string>;
-
-    /**
      * Set to false if you want to skip creation of controllers resources and methods
      * This will delete all the controllers resources and methods from the API
      */
@@ -271,22 +233,6 @@ export class APIConstruct implements FW24Construct {
     private methods: Method[] = [];
     private readonly controllerStacks = new Map<string, { methods: Method[], resources: IResource[], controllersHash: string[] }>();
 
-    /**
-     * Shared root segments for nested controllers (e.g. `internal` for `internal/notifications`),
-     * each created exactly once in a STABLE owner stack and referenced by every sibling nested stack
-     * via the resource-id token. The owner is the main stack by default, or a pinned controller
-     * stack (`nestedControllerRootOwners`) for already-deployed apps. Either way the owner is fixed
-     * by config — never by registration order — so the segment's CloudFormation logical id is
-     * identical on every synth. No 409, no live AWS lookups.
-     */
-    private readonly sharedControllerRoots = new Map<string, { resource: IResource; ownerStack: Stack }>();
-    /** 'auto' strategy: resolved `rootSegment -> owning controller stack name`, discovered from deployed state. */
-    private readonly resolvedAutoRootOwners = new Map<string, string>();
-    /** Injectable CloudFormation lookup for the 'auto' strategy (overridable in tests). */
-    private nestedRootLookup?: NestedRootCloudFormationLookup;
-    /** True once an api-key usage plan was requested while deployment was still deferred. */
-    private deferredApiKeyPlanRequested = false;
-
     // default constructor to initialize the stack configuration
     constructor(private readonly apiConstructConfig: IAPIConstructConfig) {
         // hydrate the config object with environment variables ex: APIGATEWAY_CONTROLLERS
@@ -319,13 +265,6 @@ export class APIConstruct implements FW24Construct {
         if (this.fw24.useMultiStackSetup()) {
             paramsApi.deploy = false;
             delete paramsApi.deployOptions;
-        } else if (this.isNestedControllerDeployment()) {
-            // Nested-controller apps publish a single, explicit stage AFTER every nested stack is
-            // registered (see createSingleDeployment). Letting RestApi auto-deploy here would
-            // publish an early stage that misses late-registered nested routes (the "deploy twice"
-            // bug). We assign this.api.deploymentStage ourselves once the deployment exists.
-            paramsApi.deploy = false;
-            delete paramsApi.deployOptions;
         }
         this.logger.debug("Creating API Gateway... ");
         // get the main stack from the framework
@@ -351,10 +290,8 @@ export class APIConstruct implements FW24Construct {
             });
         }
 
-        // Set up usage plans if configured. Usage plans bind to this.api.deploymentStage; for
-        // nested-controller apps that stage does not exist yet (deploy:false), so we defer plan
-        // setup until after the single deployment creates the stage (see flushDeferredUsagePlans).
-        if (!this.isNestedControllerDeployment() && this.apiConstructConfig.usagePlans?.length) {
+        // Set up usage plans if configured
+        if (this.apiConstructConfig.usagePlans?.length) {
             for (const planConfig of this.apiConstructConfig.usagePlans) {
                 this.setupUsagePlan(planConfig);
             }
@@ -374,35 +311,8 @@ export class APIConstruct implements FW24Construct {
         this.logger.info(`API-gateway construct: ${this.name} has imported APIs: ${this.fw24.hasImportedAPI(this.name)}`);
         if (this.fw24.hasImportedAPI(this.name) && this.fw24.useMultiStackSetup()) {
             await this.createDeployments();
-        } else if (this.fw24.hasImportedAPI(this.name) || this.isNestedControllerDeployment()) {
+        } else if (this.fw24.hasImportedAPI(this.name)) {
             await this.createSingleDeployment();
-        }
-
-        // Usage plans were deferred for nested-controller apps until the stage exists; flush now.
-        this.flushDeferredUsagePlans();
-    }
-
-    /**
-     * Nested-controller layout: controllers live in nested stacks under a shared parent, so the API
-     * must publish a single explicit stage after all nested stacks register (not auto-deploy early).
-     * Mutually exclusive with multiStack (getStack forbids parentStackName under multiStack).
-     */
-    private isNestedControllerDeployment(): boolean {
-        return !!this.apiConstructConfig.controllerParentStackName && !this.fw24.useMultiStackSetup();
-    }
-
-    /** Set up usage plans deferred during a nested-controller deployment, once the stage exists. */
-    private flushDeferredUsagePlans(): void {
-        if (!this.isNestedControllerDeployment()) {
-            return;
-        }
-        if (this.apiConstructConfig.usagePlans?.length) {
-            for (const planConfig of this.apiConstructConfig.usagePlans) {
-                this.setupUsagePlan(planConfig);
-            }
-        }
-        if (this.deferredApiKeyPlanRequested) {
-            this.setupUsagePlan(undefined, true);
         }
     }
 
@@ -435,30 +345,24 @@ export class APIConstruct implements FW24Construct {
         // sets the default controllers directory if not defined
         const controllersDirectory = this.apiConstructConfig.controllersDirectory || "./src/controllers";
 
-        // Collect descriptors first so the 'auto' strategy can resolve shared-root owners from
-        // deployed state BEFORE any controller is registered (registration order stays irrelevant).
-        const collected: Array<{ descriptor: HandlerDescriptor; ownerModule?: IFw24Module }> = [];
-        await Helper.registerHandlers(controllersDirectory, (desc: HandlerDescriptor) => { collected.push({ descriptor: desc }); });
+        // register the controllers
+        await Helper.registerHandlers(controllersDirectory, this.registerController);
 
         if (this.fw24.hasModules()) {
             const modules = this.fw24.getModules();
             this.logger.debug("API-gateway stack: construct: app has modules ", Array.from(modules.keys()));
             for (const [ , module ] of modules) {
-                this.logger.debug("Load controllers from module base-path: ", module.getBasePath());
+                const basePath = module.getBasePath();
+
+                this.logger.debug("Load controllers from module base-path: ", basePath);
+
                 Helper.registerControllersFromModule(
                     module,
-                    (desc: HandlerDescriptor) => { collected.push({ descriptor: desc, ownerModule: module }); }
+                    (desc: HandlerDescriptor) => this.registerController(desc, module)
                 );
             }
         } else {
             this.logger.debug("API-gateway stack: construct: app has NO modules ");
-        }
-
-        // 'auto' strategy: discover which deployed stack currently owns each shared root.
-        await this.resolveAutoSharedRootOwners(collected.map((c) => c.descriptor));
-
-        for (const { descriptor, ownerModule } of collected) {
-            await this.registerController(descriptor, ownerModule);
         }
 
         // Register system controllers from fw24 singleton
@@ -598,14 +502,9 @@ export class APIConstruct implements FW24Construct {
 
         this.logger.debug(`Register Controller ~ Default Authorizer: name: ${defaultAuthorizerName} - type: ${defaultAuthorizerType} - groups: ${defaultAuthorizerGroups}`);
 
-        // Set up API key if required. For nested-controller apps the deployment stage does not exist
-        // yet, so record the request and create the plan in flushDeferredUsagePlans (post-deployment).
+        // Set up API key if required
         if (controllerConfig.requireApiKey) {
-            if (this.isNestedControllerDeployment()) {
-                this.deferredApiKeyPlanRequested = true;
-            } else {
-                this.setupUsagePlan(undefined, true);
-            }
+            this.setupUsagePlan(undefined, true);
         }
 
         // Set up routes for the controller
@@ -730,27 +629,12 @@ export class APIConstruct implements FW24Construct {
         // create the name from all the controller hash values combined as a single hash and add dependency on all the controllers
         const deploymentName = `deployment-${createHash('md5').update(Array.from(this.controllerStacks.values()).map(c => c.controllersHash).join('-')).digest('hex')}`;
 
-        const nestedControllerDeployment = this.isNestedControllerDeployment();
-        const deployOptions = this.apiConstructConfig.apiOptions?.deployOptions;
-
         const deployment = new Deployment(this.fw24.getStack(this.name), deploymentName, {
             api: this.api,
-            description: deployOptions?.description,
-            // For nested-controller apps we publish the stage explicitly below (so it can depend on
-            // every nested stack and so this.api.deploymentStage gets set for usage plans). For the
-            // imported-API path, keep the original behaviour of letting Deployment create the stage.
-            ...(nestedControllerDeployment ? {} : { stageName }),
+            stageName: stageName,
         });
 
-        for (const [ controllerStackName, { methods, resources } ] of this.controllerStacks.entries()) {
-            // The deployment must wait for every nested stack's resources/methods to exist, otherwise
-            // the published stage can miss late-registered routes (the "deploy twice" bug).
-            const controllerStack = this.fw24.getStack(controllerStackName);
-            if (controllerStack !== this.mainStack) {
-                this.logger.debug(`Adding nested stack dependency ${controllerStackName} to deployment`);
-                deployment.node.addDependency(controllerStack);
-            }
-
+        for (const [ _controllerStackName, { methods, resources } ] of this.controllerStacks.entries()) {
             for (const method of methods) {
                 this.logger.debug(`Adding method dependency ${method.httpMethod} ${method.resource.path} to deployment`);
                 deployment.node.addDependency(method)
@@ -760,24 +644,6 @@ export class APIConstruct implements FW24Construct {
                 this.logger.debug(`Adding resource dependency ${resource.path} to deployment`);
                 deployment.node.addDependency(resource);
             }
-        }
-
-        // Ensure main-stack-owned shared roots exist before the deployment publishes the stage.
-        // (Pinned roots live in nested stacks, already covered by the nested-stack dependency above.)
-        for (const { resource, ownerStack } of this.sharedControllerRoots.values()) {
-            if (ownerStack === this.mainStack) {
-                deployment.node.addDependency(resource);
-            }
-        }
-
-        if (nestedControllerDeployment) {
-            // Publish exactly one stage, wired to this deployment, and expose it as the API's
-            // deploymentStage so usage plans / api keys can bind to a real stage.
-            this.api.deploymentStage = new Stage(this.mainStack, `${this.fw24.appName}-${stageName}-stage`, {
-                ...(deployOptions ?? {}),
-                deployment,
-                stageName,
-            });
         }
     }
 
@@ -807,151 +673,6 @@ export class APIConstruct implements FW24Construct {
         return this.apiConstructConfig.cors || [];
     }
 
-    /** Route + stack name for a controller descriptor (mirrors registerController's derivation). */
-    private describeController(descriptor: HandlerDescriptor): { route: string; stackName: string } {
-        const { handlerClass, fileName } = descriptor;
-        const folderPath = fileName.split('/').slice(0, -1).join('/');
-        const handlerInstance = new handlerClass();
-        const route = fileName.includes('/') ? `${folderPath}/${handlerInstance.controllerName}` : handlerInstance.controllerName;
-        const stackName = handlerInstance?.controllerConfig?.stackName || route;
-        return { route, stackName };
-    }
-
-    /**
-     * 'auto' strategy: for each shared root, discover from deployed CloudFormation which controller
-     * stack currently owns it, and record that stack as the owner. The owning controller is matched
-     * by ROUTE (a semantic value present in both the deployed template and the app's controllers) —
-     * never by CloudFormation logical id (which is an unresolved token at synth) and with no hardcoded
-     * segment names. Fails loud rather than guessing; honours a `nestedControllerRootOwners` value as
-     * an explicit fallback for the unresolvable cases (no creds / ambiguous / unmatched).
-     */
-    private async resolveAutoSharedRootOwners(descriptors: HandlerDescriptor[]): Promise<void> {
-        if (this.apiConstructConfig.nestedControllerRootStrategy !== 'auto') {
-            return;
-        }
-
-        const routeToStackName = new Map<string, string>();
-        const rootsWithNestedControllers = new Set<string>();
-        for (const descriptor of descriptors) {
-            const { route, stackName } = this.describeController(descriptor);
-            routeToStackName.set(route, stackName);
-            const parts = route.split('/');
-            if (parts.length > 1) {
-                rootsWithNestedControllers.add(parts[ 0 ]);
-            }
-        }
-        if (rootsWithNestedControllers.size === 0) {
-            return;
-        }
-
-        const fallback = (rootSegment: string): string | undefined => this.apiConstructConfig.nestedControllerRootOwners?.[ rootSegment ];
-
-        let resolutions;
-        try {
-            const lookup = this.nestedRootLookup ?? createCloudFormationNestedRootLookup();
-            resolutions = await resolveDeployedNestedRootOwners(this.mainStack.stackName, [ ...rootsWithNestedControllers ], lookup);
-        } catch (error) {
-            const message = error instanceof Error ? error.message : String(error);
-            // No silent guessing: every root either resolves, has an explicit fallback, or we fail loud.
-            const unresolved = [ ...rootsWithNestedControllers ].filter((root) => !fallback(root));
-            if (unresolved.length > 0) {
-                throw new Error(
-                    `nestedControllerRootStrategy 'auto' could not look up deployed shared-root owners on `
-                    + `${this.mainStack.stackName} (${message}). Run the build with AWS credentials, or set `
-                    + `nestedControllerRootOwners for: ${unresolved.join(', ')}, or use the 'pinned'/'main-stack' strategy.`,
-                );
-            }
-            for (const root of rootsWithNestedControllers) {
-                this.resolvedAutoRootOwners.set(root, fallback(root)!);
-            }
-            return;
-        }
-
-        for (const [ root, resolution ] of resolutions) {
-            if (resolution.kind === 'not-found') {
-                // greenfield root — nothing deployed owns it yet; main stack will create it
-                continue;
-            }
-            if (resolution.kind === 'ambiguous') {
-                const pinned = fallback(root);
-                if (pinned) {
-                    this.resolvedAutoRootOwners.set(root, pinned);
-                    continue;
-                }
-                throw new Error(
-                    `nestedControllerRootStrategy 'auto' found multiple deployed owners for /${root} `
-                    + `(${resolution.ownerStackLogicalIds.join(', ')}). Resolve the drift or set `
-                    + `nestedControllerRootOwners.${root}.`,
-                );
-            }
-            // owned: the owning controller is the deployed route that matches one of our controllers
-            const ownerRoute = resolution.candidateRoutes.find((candidate) => routeToStackName.has(candidate));
-            if (ownerRoute) {
-                this.resolvedAutoRootOwners.set(root, routeToStackName.get(ownerRoute)!);
-                this.logger.info(`Nested root /${root} resolved (auto) to existing owner stack ${routeToStackName.get(ownerRoute)}`);
-                continue;
-            }
-            const pinned = fallback(root);
-            if (pinned) {
-                this.resolvedAutoRootOwners.set(root, pinned);
-                continue;
-            }
-            throw new Error(
-                `nestedControllerRootStrategy 'auto' found /${root} deployed but could not match its owner to a `
-                + `current controller (deployed routes under /${root}: ${resolution.candidateRoutes.join(', ') || 'none'}). `
-                + `Set nestedControllerRootOwners.${root}.`,
-            );
-        }
-    }
-
-    /** Resolve the controller stack that should own a shared root, per the configured strategy. */
-    private resolveSharedRootOwnerStackName(rootSegment: string): string | undefined {
-        switch (this.apiConstructConfig.nestedControllerRootStrategy) {
-            case 'pinned':
-                return this.apiConstructConfig.nestedControllerRootOwners?.[ rootSegment ];
-            case 'auto':
-                return this.resolvedAutoRootOwners.get(rootSegment)
-                    ?? this.apiConstructConfig.nestedControllerRootOwners?.[ rootSegment ];
-            default:
-                return undefined; // 'main-stack'
-        }
-    }
-
-    /**
-     * Create (once) the shared root segment for a nested controller in its STABLE owner stack, and
-     * publish its resource-id token so sibling nested stacks can reference it. The owner is decided
-     * by the configured strategy (main stack, pinned, or auto-resolved) — never by registration
-     * order — so the segment's CloudFormation logical id is identical on every synth. That is what
-     * removes the 409/ordering bug.
-     */
-    private getOrCreateSharedControllerRoot(rootSegment: string): { resource: IResource; ownerStack: Stack } {
-        const existing = this.sharedControllerRoots.get(rootSegment);
-        if (existing) {
-            return existing;
-        }
-
-        const ownerStackName = this.resolveSharedRootOwnerStackName(rootSegment);
-
-        let resource: IResource;
-        let ownerStack: Stack;
-        if (ownerStackName) {
-            // pinned/auto: create the root in its existing owner stack — moves no live resource
-            this.fw24.getStack(ownerStackName, this.apiConstructConfig.controllerParentStackName);
-            ownerStack = this.fw24.getStack(ownerStackName);
-            resource = this.getAPI(ownerStackName).api.root.addResource(rootSegment);
-            this.logger.debug(`Shared root /${rootSegment} owned by existing controller stack ${ownerStackName}`);
-        } else {
-            // default ('main-stack'), or a greenfield root under 'auto': the main stack owns it
-            ownerStack = this.mainStack;
-            resource = this.api.root.addResource(rootSegment);
-        }
-
-        const entry = { resource, ownerStack };
-        this.sharedControllerRoots.set(rootSegment, entry);
-        this.fw24.setConstructOutput(this, `restAPI_controller_${rootSegment}`, resource, OutputType.RESOURCE, 'resourceId');
-        return entry;
-    }
-
     private readonly getOrCreateControllerResource = (controllerName: string, controllerStackName: string): IResource => {
         let restAPI = this.getAPI(controllerStackName);
         let controllerResource: IResource = restAPI.api.root;
@@ -959,20 +680,16 @@ export class APIConstruct implements FW24Construct {
         const pathParts = controllerName.split('/');
         for (const pathPart of pathParts) {
             let childResource = controllerResource.getResource(pathPart) as IResource;
-            // The first path part of a nested controller (e.g. `internal` in `internal/notifications`)
-            // is a SHARED root owned by the main stack. Resolve it from there instead of letting
-            // whichever controller registers first create it — this is what removes the 409/ordering bug.
+            // if it's a nested controller, the root resource may not be created in another stack
             const isNestedController = pathParts.length > 1;
             if (!childResource && isNestedController && pathPart === pathParts[ 0 ]) {
-                const sharedRoot = this.getOrCreateSharedControllerRoot(pathPart);
-                if (currentStack === sharedRoot.ownerStack) {
-                    // same stack as the owner (single-stack app, or this controller IS the owner) — use it directly
-                    childResource = sharedRoot.resource;
-                } else {
-                    // reference the owner stack's root by its resource-id token; CDK wires it across stacks
-                    this.logger.debug(`Referencing shared root /${pathPart} (owner ${sharedRoot.ownerStack.stackName}) from ${controllerStackName}`);
+                // try to get the root resource from the fw24 output
+                this.logger.debug(`Getting controller resource for ${pathPart} from fw24 output`);
+                const controllerResourceId = this.fw24.getEnvironmentVariable(`restAPI_controller_${pathPart}_resourceId`, 'resource', currentStack);
+                if (controllerResourceId) {
+                    this.logger.debug(`Controller resource for ${pathPart} found in fw24 output: ${controllerResourceId}`);
                     childResource = Resource.fromResourceAttributes(currentStack, `${this.fw24.appName}-${controllerStackName}-${pathPart}`, {
-                        resourceId: sharedRoot.resource.resourceId,
+                        resourceId: controllerResourceId,
                         restApi: restAPI.api,
                         path: '/' + pathPart
                     });
@@ -985,6 +702,10 @@ export class APIConstruct implements FW24Construct {
                 if (restAPI.isImported) {
                     const corsPreflightMethod = childResource.addCorsPreflight(this.getCorsPreflightOptions());
                     this.methods.push(corsPreflightMethod);
+                }
+                if (isNestedController && pathPart === pathParts[ 0 ]) {
+                    this.logger.debug(`Setting output for contorller resource ${controllerStackName} path ${pathPart}`);
+                    this.fw24.setConstructOutput(this, `restAPI_controller_${pathPart}`, childResource, OutputType.RESOURCE, 'resourceId');
                 }
             }
             controllerResource = childResource;
