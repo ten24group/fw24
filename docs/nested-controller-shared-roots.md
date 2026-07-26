@@ -94,3 +94,20 @@ other nested stacks keep resolving to it the whole time.
 
 Every environment owns `/internal` in the main stack — identical everywhere, no per-environment
 config, and you never think about shared-root ownership again.
+
+## Known limitations (accepted)
+
+These are intentional boundaries — not gaps to fix in a follow-up redesign:
+
+- **`auto` needs build-time AWS credentials** — local `cdk synth` / `cdk diff` without credentials
+  for the target account will fail loud rather than guess an owner. Use `'pinned'` or
+  `nestedControllerRootOwners` as an explicit fallback for offline synth.
+- **Ambiguous deployed ownership fails loud** — if more than one nested stack already declares the
+  same root segment, lookup logs a warning and does not pick a winner silently.
+- **`auto` is mock-tested only in unit tests** — validate against real CloudFormation on a non-prod
+  environment before relying on `'auto'` in production CI.
+- **Brownfield one-time move** — apps that already deployed a shared root inside a nested stack need
+  either `'pinned'` / `'auto'`, or a one-time `cdk refactor` (or retain/import) to reach the
+  zero-config `'main-stack'` end state. This is migration work, not a deploy-order bug.
+- **Supersedes PR #289 / #263 approaches** — do not merge the older nested-controller migration
+  handler or synth-introspection lineages; this stable-root design is the supported path.
