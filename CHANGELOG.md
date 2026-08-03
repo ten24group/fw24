@@ -2,6 +2,14 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.58](https://github.com/ten24group/fw24/compare/v1.1.0-beta.57...v1.1.0-beta.58) (2026-08-03)
+
+
+### Bug Fixes
+
+* **api-gateway:** stable shared-root ownership for nested controllers (3 strategies) ([5d2560a](https://github.com/ten24group/fw24/commit/5d2560afbde67ce43847014e5a55841abd090db4)), closes [#263](https://github.com/ten24group/fw24/issues/263) [#289](https://github.com/ten24group/fw24/issues/289)
+* **di:** share DIMetadataStore across fw24 copies via global, like ROOT ([5bcb277](https://github.com/ten24group/fw24/commit/5bcb2772893cc7fa3587affbfe8b71d43e1cf380))
+
 ## [1.1.0-beta.57](https://github.com/ten24group/fw24/compare/v1.1.0-beta.55...v1.1.0-beta.57) (2026-07-24)
 
 
