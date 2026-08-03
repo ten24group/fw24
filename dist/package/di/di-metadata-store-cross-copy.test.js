@@ -1,0 +1,37 @@
+"use strict";
+/**
+ * DIMetadataStore must be shared across fw24 copies in one process.
+ *
+ * A Lambda holds more than one copy of the fw24 core (one bundled into the handler, one in the
+ * fw24 layer). ROOT is already a global singleton, so a `ROOT.module(X)` call can execute in a
+ * different copy than the one whose `@DIModule()` decorator wrote X's metadata. With a per-copy
+ * static store that read misses and the entry-package load dies with
+ * "Module X does not have any metadata" (observed in prod: AuthModule / TrialsModule).
+ *
+ * `jest.isolateModules` evaluates a second, independent instance of the module graph — exactly
+ * what a duplicated bundle is at runtime.
+ */
+function loadFreshCopy(load) {
+    let copy;
+    jest.isolateModules(() => { copy = load(); });
+    return copy;
+}
+describe('DIMetadataStore is shared across fw24 core copies', () => {
+    it('module metadata written via one copy is readable via another', () => {
+        const metaA = require('./metadata');
+        const metaB = loadFreshCopy(() => require('./metadata'));
+        expect(metaB).not.toBe(metaA); // genuinely two module-graph copies
+        class CrossCopyProbeModule {
+        }
+        metaA.registerModuleMetadata(CrossCopyProbeModule, {});
+        // Before the fix each copy had its own static store and this returned undefined.
+        expect(metaB.getModuleMetadata(CrossCopyProbeModule)).toBeDefined();
+    });
+    it('both copies expose the SAME store object', () => {
+        const copyA = require('./container').DIContainer;
+        const copyB = loadFreshCopy(() => require('./container').DIContainer);
+        expect(copyB).not.toBe(copyA); // two distinct class objects
+        expect(copyA.DIMetadataStore).toBe(copyB.DIMetadataStore);
+    });
+});
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJmaWxlIjoiZGktbWV0YWRhdGEtc3RvcmUtY3Jvc3MtY29weS50ZXN0LmpzIiwic291cmNlUm9vdCI6IiIsInNvdXJjZXMiOlsiLi4vLi4vLi4vc3JjL2RpL2RpLW1ldGFkYXRhLXN0b3JlLWNyb3NzLWNvcHkudGVzdC50cyJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiO0FBQUE7Ozs7Ozs7Ozs7O0dBV0c7QUFFSCxTQUFTLGFBQWEsQ0FBSSxJQUFhO0lBQ25DLElBQUksSUFBUSxDQUFDO0lBQ2IsSUFBSSxDQUFDLGNBQWMsQ0FBQyxHQUFHLEVBQUUsR0FBRyxJQUFJLEdBQUcsSUFBSSxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQztJQUM5QyxPQUFPLElBQUksQ0FBQztBQUNoQixDQUFDO0FBRUQsUUFBUSxDQUFDLG1EQUFtRCxFQUFFLEdBQUcsRUFBRTtJQUMvRCxFQUFFLENBQUMsOERBQThELEVBQUUsR0FBRyxFQUFFO1FBQ3BFLE1BQU0sS0FBSyxHQUFHLE9BQU8sQ0FBQyxZQUFZLENBQUMsQ0FBQztRQUNwQyxNQUFNLEtBQUssR0FBRyxhQUFhLENBQUMsR0FBRyxFQUFFLENBQUMsT0FBTyxDQUFDLFlBQVksQ0FBQyxDQUFDLENBQUM7UUFDekQsTUFBTSxDQUFDLEtBQUssQ0FBQyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsS0FBSyxDQUFDLENBQUMsQ0FBQyxvQ0FBb0M7UUFFbkUsTUFBTSxvQkFBb0I7U0FBSTtRQUM5QixLQUFLLENBQUMsc0JBQXNCLENBQUMsb0JBQW9CLEVBQUUsRUFBRSxDQUFDLENBQUM7UUFFdkQsaUZBQWlGO1FBQ2pGLE1BQU0sQ0FBQyxLQUFLLENBQUMsaUJBQWlCLENBQUMsb0JBQW9CLENBQUMsQ0FBQyxDQUFDLFdBQVcsRUFBRSxDQUFDO0lBQ3hFLENBQUMsQ0FBQyxDQUFDO0lBRUgsRUFBRSxDQUFDLDBDQUEwQyxFQUFFLEdBQUcsRUFBRTtRQUNoRCxNQUFNLEtBQUssR0FBRyxPQUFPLENBQUMsYUFBYSxDQUFDLENBQUMsV0FBVyxDQUFDO1FBQ2pELE1BQU0sS0FBSyxHQUFHLGFBQWEsQ0FBQyxHQUFHLEVBQUUsQ0FBQyxPQUFPLENBQUMsYUFBYSxDQUFDLENBQUMsV0FBVyxDQUFDLENBQUM7UUFDdEUsTUFBTSxDQUFDLEtBQUssQ0FBQyxDQUFDLEdBQUcsQ0FBQyxJQUFJLENBQUMsS0FBSyxDQUFDLENBQUMsQ0FBQyw2QkFBNkI7UUFFNUQsTUFBTSxDQUFDLEtBQUssQ0FBQyxlQUFlLENBQUMsQ0FBQyxJQUFJLENBQUMsS0FBSyxDQUFDLGVBQWUsQ0FBQyxDQUFDO0lBQzlELENBQUMsQ0FBQyxDQUFDO0FBQ1AsQ0FBQyxDQUFDLENBQUMiLCJzb3VyY2VzQ29udGVudCI6WyIvKipcbiAqIERJTWV0YWRhdGFTdG9yZSBtdXN0IGJlIHNoYXJlZCBhY3Jvc3MgZncyNCBjb3BpZXMgaW4gb25lIHByb2Nlc3MuXG4gKlxuICogQSBMYW1iZGEgaG9sZHMgbW9yZSB0aGFuIG9uZSBjb3B5IG9mIHRoZSBmdzI0IGNvcmUgKG9uZSBidW5kbGVkIGludG8gdGhlIGhhbmRsZXIsIG9uZSBpbiB0aGVcbiAqIGZ3MjQgbGF5ZXIpLiBST09UIGlzIGFscmVhZHkgYSBnbG9iYWwgc2luZ2xldG9uLCBzbyBhIGBST09ULm1vZHVsZShYKWAgY2FsbCBjYW4gZXhlY3V0ZSBpbiBhXG4gKiBkaWZmZXJlbnQgY29weSB0aGFuIHRoZSBvbmUgd2hvc2UgYEBESU1vZHVsZSgpYCBkZWNvcmF0b3Igd3JvdGUgWCdzIG1ldGFkYXRhLiBXaXRoIGEgcGVyLWNvcHlcbiAqIHN0YXRpYyBzdG9yZSB0aGF0IHJlYWQgbWlzc2VzIGFuZCB0aGUgZW50cnktcGFja2FnZSBsb2FkIGRpZXMgd2l0aFxuICogXCJNb2R1bGUgWCBkb2VzIG5vdCBoYXZlIGFueSBtZXRhZGF0YVwiIChvYnNlcnZlZCBpbiBwcm9kOiBBdXRoTW9kdWxlIC8gVHJpYWxzTW9kdWxlKS5cbiAqXG4gKiBgamVzdC5pc29sYXRlTW9kdWxlc2AgZXZhbHVhdGVzIGEgc2Vjb25kLCBpbmRlcGVuZGVudCBpbnN0YW5jZSBvZiB0aGUgbW9kdWxlIGdyYXBoIOKAlCBleGFjdGx5XG4gKiB3aGF0IGEgZHVwbGljYXRlZCBidW5kbGUgaXMgYXQgcnVudGltZS5cbiAqL1xuXG5mdW5jdGlvbiBsb2FkRnJlc2hDb3B5PFQ+KGxvYWQ6ICgpID0+IFQpOiBUIHtcbiAgICBsZXQgY29weSE6IFQ7XG4gICAgamVzdC5pc29sYXRlTW9kdWxlcygoKSA9PiB7IGNvcHkgPSBsb2FkKCk7IH0pO1xuICAgIHJldHVybiBjb3B5O1xufVxuXG5kZXNjcmliZSgnRElNZXRhZGF0YVN0b3JlIGlzIHNoYXJlZCBhY3Jvc3MgZncyNCBjb3JlIGNvcGllcycsICgpID0+IHtcbiAgICBpdCgnbW9kdWxlIG1ldGFkYXRhIHdyaXR0ZW4gdmlhIG9uZSBjb3B5IGlzIHJlYWRhYmxlIHZpYSBhbm90aGVyJywgKCkgPT4ge1xuICAgICAgICBjb25zdCBtZXRhQSA9IHJlcXVpcmUoJy4vbWV0YWRhdGEnKTtcbiAgICAgICAgY29uc3QgbWV0YUIgPSBsb2FkRnJlc2hDb3B5KCgpID0+IHJlcXVpcmUoJy4vbWV0YWRhdGEnKSk7XG4gICAgICAgIGV4cGVjdChtZXRhQikubm90LnRvQmUobWV0YUEpOyAvLyBnZW51aW5lbHkgdHdvIG1vZHVsZS1ncmFwaCBjb3BpZXNcblxuICAgICAgICBjbGFzcyBDcm9zc0NvcHlQcm9iZU1vZHVsZSB7IH1cbiAgICAgICAgbWV0YUEucmVnaXN0ZXJNb2R1bGVNZXRhZGF0YShDcm9zc0NvcHlQcm9iZU1vZHVsZSwge30pO1xuXG4gICAgICAgIC8vIEJlZm9yZSB0aGUgZml4IGVhY2ggY29weSBoYWQgaXRzIG93biBzdGF0aWMgc3RvcmUgYW5kIHRoaXMgcmV0dXJuZWQgdW5kZWZpbmVkLlxuICAgICAgICBleHBlY3QobWV0YUIuZ2V0TW9kdWxlTWV0YWRhdGEoQ3Jvc3NDb3B5UHJvYmVNb2R1bGUpKS50b0JlRGVmaW5lZCgpO1xuICAgIH0pO1xuXG4gICAgaXQoJ2JvdGggY29waWVzIGV4cG9zZSB0aGUgU0FNRSBzdG9yZSBvYmplY3QnLCAoKSA9PiB7XG4gICAgICAgIGNvbnN0IGNvcHlBID0gcmVxdWlyZSgnLi9jb250YWluZXInKS5ESUNvbnRhaW5lcjtcbiAgICAgICAgY29uc3QgY29weUIgPSBsb2FkRnJlc2hDb3B5KCgpID0+IHJlcXVpcmUoJy4vY29udGFpbmVyJykuRElDb250YWluZXIpO1xuICAgICAgICBleHBlY3QoY29weUIpLm5vdC50b0JlKGNvcHlBKTsgLy8gdHdvIGRpc3RpbmN0IGNsYXNzIG9iamVjdHNcblxuICAgICAgICBleHBlY3QoY29weUEuRElNZXRhZGF0YVN0b3JlKS50b0JlKGNvcHlCLkRJTWV0YWRhdGFTdG9yZSk7XG4gICAgfSk7XG59KTtcbiJdfQ==

@@ -4,7 +4,14 @@ import { BaseProviderOptions, ClassConstructor, ConfigProviderOptions, DepIdenti
 import { BaseSearchEngine } from '../search';
 export declare class DIContainer implements IDIContainer {
     private parentContainer?;
-    static readonly DIMetadataStore: MetadataManager;
+    /**
+     * Shared across ALL fw24 copies in the process (bundled in Lambda + layer), same as ROOT
+     * below and for the same reason: ROOT is a global singleton, so a method invoked on it can
+     * execute in a different fw24 copy than the one whose decorators wrote the metadata. With a
+     * per-copy static store, that read misses ("Module X does not have any metadata") and the
+     * entry-package load dies. Metadata is keyed by class NAME, so one shared store is correct.
+     */
+    static get DIMetadataStore(): MetadataManager;
     readonly containerId: string;
     private readonly logger;
     private readonly middlewares;
