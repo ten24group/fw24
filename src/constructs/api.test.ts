@@ -1226,16 +1226,27 @@ describe('APIConstruct', () => {
       });
 
       await apiConstruct.construct();
+      addMinimalMethod(apiConstruct.api);
 
-      // Verify framework configures these specific headers (api.ts:650-668):
-      // - Content-Type, Authorization, X-Api-Key
-      // - X-Amz-Date, X-Amz-Content-Sha256, X-Amz-Security-Token
-      // - Access-Control-Allow-Credentials, Access-Control-Allow-Headers, Access-Control-Allow-Origin
-      // - Impersonating-User-Sub (custom header)
-
-      // We can't directly test internal getCorsPreflightOptions() but we verify API was created with CORS
-      expect(apiConstruct.api).toBeDefined();
-      expect((apiConstruct as any).apiConstructConfig.cors).toBe(true);
+      // The preflight OPTIONS mock must allow every header the framework's own clients send —
+      // notably the tracing/identity headers (x-correlation-id, x-caused-by, x-actor) the runtime
+      // consumes. A header missing from this list fails the browser preflight for any request
+      // carrying it, so the whole call dies as a CORS error before reaching the backend.
+      const template = Template.fromStack(stack);
+      template.hasResourceProperties('AWS::ApiGateway::Method', {
+        HttpMethod: 'OPTIONS',
+        Integration: {
+          IntegrationResponses: [
+            Match.objectLike({
+              ResponseParameters: Match.objectLike({
+                'method.response.header.Access-Control-Allow-Headers': Match.stringLikeRegexp(
+                  'Impersonating-User-Sub,X-Correlation-Id,X-Caused-By,X-Actor'
+                ),
+              }),
+            }),
+          ],
+        },
+      });
     });
 
     it('should enable CORS credentials', async () => {

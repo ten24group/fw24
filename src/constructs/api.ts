@@ -660,6 +660,14 @@ export class APIConstruct implements FW24Construct {
                 "Access-Control-Allow-Headers",
                 "Access-Control-Allow-Origin",
                 "Impersonating-User-Sub",
+                // Tracing/identity headers the framework itself consumes: x-correlation-id and
+                // x-caused-by feed correlation propagation, x-actor carries the end-user identity on
+                // SigV4-signed calls (see api-gateway-controller). Browsers preflight any request
+                // carrying them, so they must be allowed here or every instrumented cross-origin
+                // call fails CORS before reaching the backend.
+                "X-Correlation-Id",
+                "X-Caused-By",
+                "X-Actor",
             ],
             allowMethods: [ "OPTIONS", "GET", "POST", "PUT", "PATCH", "DELETE" ],
             allowCredentials: true,
