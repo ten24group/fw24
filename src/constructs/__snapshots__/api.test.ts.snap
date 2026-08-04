@@ -376,7 +376,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
       "Type": "AWS::IAM::Role",
       "UpdateReplacePolicy": "Retain",
     },
-    "testapiappapiDeployment9F8DA583e0e40954495aa88f904cfd3b3c1ec815": {
+    "testapiappapiDeployment9F8DA583e99ccb09d26f72184091487dc0ddd75b": {
       "DependsOn": [
         "testapiappapihealthGET85F76E98",
         "testapiappapihealthOPTIONSF3003BCB",
@@ -402,7 +402,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
       ],
       "Properties": {
         "DeploymentId": {
-          "Ref": "testapiappapiDeployment9F8DA583e0e40954495aa88f904cfd3b3c1ec815",
+          "Ref": "testapiappapiDeployment9F8DA583e99ccb09d26f72184091487dc0ddd75b",
         },
         "RestApiId": {
           "Ref": "testapiappapiCF968FAD",
@@ -421,7 +421,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
             {
               "ResponseParameters": {
                 "method.response.header.Access-Control-Allow-Credentials": "'true'",
-                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub,X-Correlation-Id,X-Caused-By,X-Actor'",
                 "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
                 "method.response.header.Access-Control-Allow-Origin": "'*'",
               },
@@ -535,7 +535,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
             {
               "ResponseParameters": {
                 "method.response.header.Access-Control-Allow-Credentials": "'true'",
-                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub,X-Correlation-Id,X-Caused-By,X-Actor'",
                 "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
                 "method.response.header.Access-Control-Allow-Origin": "'*'",
               },
@@ -719,7 +719,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
       "Type": "AWS::IAM::Role",
       "UpdateReplacePolicy": "Retain",
     },
-    "testapiappapiDeployment9F8DA58398ad98577e03bfaa2ec9f8336ef60c71": {
+    "testapiappapiDeployment9F8DA58352e7705ec8a74e710877e8779314a449": {
       "DependsOn": [
         "testapiappapihealthGET85F76E98",
         "testapiappapihealthOPTIONSF3003BCB",
@@ -745,7 +745,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
       ],
       "Properties": {
         "DeploymentId": {
-          "Ref": "testapiappapiDeployment9F8DA58398ad98577e03bfaa2ec9f8336ef60c71",
+          "Ref": "testapiappapiDeployment9F8DA58352e7705ec8a74e710877e8779314a449",
         },
         "RestApiId": {
           "Ref": "testapiappapiCF968FAD",
@@ -764,7 +764,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
             {
               "ResponseParameters": {
                 "method.response.header.Access-Control-Allow-Credentials": "'true'",
-                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub,X-Correlation-Id,X-Caused-By,X-Actor'",
                 "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
                 "method.response.header.Access-Control-Allow-Origin": "'https://example.com'",
                 "method.response.header.Vary": "'Origin'",
@@ -889,7 +889,7 @@ exports[`APIConstruct Snapshot Tests - CloudFormation Consistency should generat
             {
               "ResponseParameters": {
                 "method.response.header.Access-Control-Allow-Credentials": "'true'",
-                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub'",
+                "method.response.header.Access-Control-Allow-Headers": "'Content-Type,Authorization,X-Api-Key,X-Amz-Date,X-Amz-Content-Sha256,X-Amz-Security-Token,Access-Control-Allow-Credentials,Access-Control-Allow-Headers,Access-Control-Allow-Origin,Impersonating-User-Sub,X-Correlation-Id,X-Caused-By,X-Actor'",
                 "method.response.header.Access-Control-Allow-Methods": "'OPTIONS,GET,POST,PUT,PATCH,DELETE'",
                 "method.response.header.Access-Control-Allow-Origin": "'https://example.com'",
                 "method.response.header.Vary": "'Origin'",
