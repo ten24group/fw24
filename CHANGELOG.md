@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## [1.1.0-beta.59](https://github.com/ten24group/fw24/compare/v1.1.0-beta.58...v1.1.0-beta.59) (2026-08-04)
+
+
+### Bug Fixes
+
+* **api:** allow X-Correlation-Id, X-Caused-By and X-Actor in CORS preflight ([e88dcf4](https://github.com/ten24group/fw24/commit/e88dcf4863366d68e487c7a70896139ec82e951b))
+
 ## [1.1.0-beta.58](https://github.com/ten24group/fw24/compare/v1.1.0-beta.57...v1.1.0-beta.58) (2026-08-03)
 
 
